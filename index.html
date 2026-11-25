@@ -364,11 +364,11 @@
             box-shadow: 0 2px 10px rgba(39, 174, 96, 0.95);
         }
 
-        /* ช่องประวัติความเป็นมา ขยายให้รองรับสูงสุด 20 บรรทัดได้ชัดเจน */
-        .story-textarea-20lines {
+        /* ช่องประวัติความเป็นมา รองรับเนื้อหายาวไม่จำกัดและเลื่อนอ่านได้สะดวก */
+        .story-textarea-unlimited {
             width: 100%;
-            height: 365px;
-            min-height: 365px;
+            height: 240px;
+            min-height: 180px;
             padding: 7px;
             margin-bottom: 6px;
             box-sizing: border-box;
@@ -378,6 +378,7 @@
             font-size: 12px;
             line-height: 1.45;
             resize: vertical;
+            overflow-y: auto;
         }
 
         /* ช่อง Saved Spots แสดงได้อย่างน้อย 10 รายการโดยไม่ต้องเลื่อน */
@@ -692,7 +693,7 @@
                     <input type="text" id="spotLat" placeholder="Latitude" style="width:50%; padding:6px; box-sizing:border-box; border: 1px solid #ccc; border-radius: 5px; font-size: 12px;">
                     <input type="text" id="spotLng" placeholder="Longitude" style="width:50%; padding:6px; box-sizing:border-box; border: 1px solid #ccc; border-radius: 5px; font-size: 12px;">
                 </div>
-                <textarea id="spotStory" class="story-textarea-20lines" placeholder="ประวัติสถานที่ (ไม่เกิน 20 บรรทัด หรือ - หากไม่พบข้อมูล) — ตรวจสอบก่อนกดบันทึก"></textarea>
+                <textarea id="spotStory" class="story-textarea-unlimited" placeholder="เนื้อหาสาระสำคัญของสถานที่ (ความยาวไม่จำกัด หรือ - หากไม่พบข้อมูล) — ตรวจสอบก่อนกดบันทึก"></textarea>
                 
                 <div style="display: flex; gap: 6px;">
                     <button id="saveSpotBtn" onclick="addSpot()" style="background:#27ae60; color:white; border:none; padding:8px; flex: 1; border-radius:5px; font-weight:bold; cursor:pointer; font-size:13px;">➕ บันทึกจุดท่องเที่ยวนี้</button>
@@ -1451,9 +1452,7 @@
         }).openTooltip();
     }
 
-    // ================= ค้นหาข้อมูลจาก https://th.wikipedia.org/wiki/ อย่างเดียว ความยาวไม่เกิน 20 บรรทัด (ไม่พบใส่ -) =================
-    const TH_WIKI_BASE = "https://th.wikipedia.org/wiki/";
-
+    // ================= ค้นหาข้อมูลจาก https://th.wikipedia.org/wiki/ อย่างเดียว เฉพาะเนื้อหาสาระสำคัญ ไม่จำกัดความยาว (ไม่พบใส่ -) =================
     function normalizeWikiTitleCandidates(placeName) {
         const clean = (placeName || "")
             .replace(/\(.*?\)/g, " ")
@@ -1469,10 +1468,24 @@
         return Array.from(new Set(candidates));
     }
 
-    async function fetchThaiWikipediaByTitle(title) {
+    async function fetchThaiWikipediaExtractByTitle(title) {
         const encodedTitle = encodeURIComponent(title.replace(/\s+/g, "_"));
 
-        // 1) ดึงบทสรุปตรงจาก https://th.wikipedia.org/wiki/<Title> ผ่าน Wikipedia REST Summary API
+        // ดึงเนื้อหาบทความเต็ม (ข้อความล้วน ไม่มีแท็ก HTML และไม่มีลิงก์อ้างอิง) จาก https://th.wikipedia.org/wiki/<Title>
+        try {
+            const fullExtractUrl = `https://th.wikipedia.org/w/api.php?action=query&prop=extracts&explaintext=1&redirects=1&titles=${encodedTitle}&format=json&origin=*`;
+            const res = await fetch(fullExtractUrl);
+            if (res.ok) {
+                const data = await res.json();
+                const pages = data && data.query && data.query.pages ? Object.values(data.query.pages) : [];
+                if (pages.length > 0 && !pages[0].missing && typeof pages[0].extract === "string" && pages[0].extract.trim().length > 0) {
+                    return pages[0].extract.trim();
+                }
+            }
+        } catch (_) {
+            // ลอง endpoint สำรองของ th.wikipedia.org
+        }
+
         try {
             const summaryUrl = `https://th.wikipedia.org/api/rest_v1/page/summary/${encodedTitle}`;
             const res = await fetch(summaryUrl, {
@@ -1485,22 +1498,7 @@
                 }
             }
         } catch (_) {
-            // ลอง endpoint ถัดไปของ th.wikipedia.org
-        }
-
-        // 2) ดึงเนื้อหาหน้า https://th.wikipedia.org/wiki/<Title> ผ่าน MediaWiki Action API (origin=*)
-        try {
-            const apiUrl = `https://th.wikipedia.org/w/api.php?action=query&prop=extracts&exintro=1&explaintext=1&redirects=1&titles=${encodedTitle}&format=json&origin=*`;
-            const res = await fetch(apiUrl);
-            if (res.ok) {
-                const data = await res.json();
-                const pages = data && data.query && data.query.pages ? Object.values(data.query.pages) : [];
-                if (pages.length > 0 && !pages[0].missing && typeof pages[0].extract === "string" && pages[0].extract.trim().length > 0) {
-                    return pages[0].extract.trim();
-                }
-            }
-        } catch (_) {
-            // ไม่พบหรือเชื่อมต่อไม่ได้
+            // ไม่พบข้อมูล
         }
 
         return "";
@@ -1530,69 +1528,38 @@
 
         const candidates = normalizeWikiTitleCandidates(cleanName);
         for (const candidate of candidates) {
-            const directExtract = await fetchThaiWikipediaByTitle(candidate);
-            if (directExtract) {
-                return { found: true, text: directExtract, url: `${TH_WIKI_BASE}${encodeURIComponent(candidate.replace(/\s+/g, "_"))}` };
+            const extract = await fetchThaiWikipediaExtractByTitle(candidate);
+            if (extract) {
+                return { found: true, text: extract };
             }
         }
 
-        // ค้นหาชื่อบทความที่ตรงที่สุดบน th.wikipedia.org แล้วดึงเนื้อหาจาก /wiki/<Title>
         const matchedTitle = await searchThaiWikipediaTitle(cleanName);
         if (matchedTitle) {
-            const searchedExtract = await fetchThaiWikipediaByTitle(matchedTitle);
+            const searchedExtract = await fetchThaiWikipediaExtractByTitle(matchedTitle);
             if (searchedExtract) {
-                return { found: true, text: searchedExtract, url: `${TH_WIKI_BASE}${encodeURIComponent(matchedTitle.replace(/\s+/g, "_"))}` };
+                return { found: true, text: searchedExtract };
             }
         }
 
         return { found: false, text: "" };
     }
 
-    function summarizeToMax20Lines(placeName, lookupResult) {
+    function extractEssentialContentUnlimited(lookupResult) {
         if (!lookupResult || !lookupResult.found || !lookupResult.text) {
             return "-";
         }
 
-        const cleanedText = lookupResult.text
+        const cleaned = lookupResult.text
             .replace(/\[\d+\]/g, "")
-            .replace(/\s+/g, " ")
+            .replace(/\r\n/g, "\n")
+            .split("\n")
+            .map(line => line.replace(/[ \t]+/g, " ").trim())
+            .filter(line => line.length > 0)
+            .join("\n")
             .trim();
 
-        if (!cleanedText) {
-            return "-";
-        }
-
-        // แบ่งประโยค/ข้อความเป็นบรรทัดละประมาณ 65-80 ตัวอักษร ให้ได้เนื้อหาล้วนไม่เกิน 20 บรรทัด
-        const rawSegments = cleanedText
-            .split(/(?<=[.!?])\s+|\s+(?=ตั้งอยู่|สร้างขึ้น|ก่อตั้ง|เป็น|มี|เดิม|ต่อมา|ในสมัย|ลักษณะ|ปัจจุบัน)/)
-            .map(s => s.trim())
-            .filter(Boolean);
-
-        const lines = [];
-        for (const seg of rawSegments) {
-            if (lines.length >= 20) break;
-            if (seg.length <= 85) {
-                lines.push(seg);
-            } else {
-                let remaining = seg;
-                while (remaining.length > 0 && lines.length < 20) {
-                    if (remaining.length <= 85) {
-                        lines.push(remaining.trim());
-                        break;
-                    }
-                    let cutIdx = remaining.lastIndexOf(" ", 85);
-                    if (cutIdx < 40) cutIdx = 85;
-                    lines.push(remaining.slice(0, cutIdx).trim());
-                    remaining = remaining.slice(cutIdx).trim();
-                }
-            }
-        }
-
-        if (lines.length === 0) {
-            return "-";
-        }
-
-        return lines.slice(0, 20).join("\n");
+        return cleaned || "-";
     }
 
     async function geocodePlaceNameForManualInput(placeName) {
@@ -1691,9 +1658,9 @@
         }
 
         const lookupResult = await lookupPlaceHistoryFromSources(cleanName);
-        const wikiContent = summarizeToMax20Lines(cleanName, lookupResult);
+        const essentialContent = extractEssentialContentUnlimited(lookupResult);
         if (storyEl) {
-            storyEl.value = wikiContent;
+            storyEl.value = essentialContent;
         }
     }
 
@@ -1814,7 +1781,7 @@
         updateOsmGreenCircleOnMap(targetLat, targetLng, osmSpot.name);
 
         const lookupResult = await lookupPlaceHistoryFromSources(osmSpot.name);
-        const storyText = summarizeToMax20Lines(osmSpot.name, lookupResult);
+        const storyText = extractEssentialContentUnlimited(lookupResult);
         if (storyInputEl) storyInputEl.value = storyText;
     }
 
@@ -1832,7 +1799,7 @@
 
             const osmSpot = await findNearestTouristOsmSpotWithin30m(latNum, lngNum);
             const lookupResult = await lookupPlaceHistoryFromSources(osmSpot.name);
-            const storyText = summarizeToMax20Lines(osmSpot.name, lookupResult);
+            const storyText = extractEssentialContentUnlimited(lookupResult);
 
             document.getElementById("spotName").value = osmSpot.name;
             document.getElementById("spotLat").value = latNum;
@@ -2534,7 +2501,7 @@
                         <input id="edit-lat-${spot.id}" class="spot-field-input" type="text" value="${escapeAttr(spot.lat)}" placeholder="Latitude" ${disabledAttr}>
                         <input id="edit-lng-${spot.id}" class="spot-field-input" type="text" value="${escapeAttr(spot.lng)}" placeholder="Longitude" ${disabledAttr}>
                     </div>
-                    <textarea id="edit-story-${spot.id}" class="spot-field-input" style="height: 240px; line-height: 1.4;" placeholder="บทบรรยาย" ${disabledAttr}>${escapeHtml(spot.story)}</textarea>
+                    <textarea id="edit-story-${spot.id}" class="spot-field-input" style="height: 240px; line-height: 1.4; overflow-y: auto;" placeholder="บทบรรยาย" ${disabledAttr}>${escapeHtml(spot.story)}</textarea>
                     <div class="spot-action-row">
                         <button type="button" class="btn-edit-spot" onclick="enableInlineEdit(${spot.id})">✏️ แก้ไข</button>
                         <button type="button" class="btn-save-spot" onclick="saveInlineSpot(${spot.id})">💾 บันทึก</button>
