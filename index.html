@@ -670,7 +670,7 @@
                     <div id="centerOsmAddress" class="osm-center-detail" style="color:#555; font-size:9px;">-</div>
                 </div>
 
-                <div style="font-size: 10px; color: #27ae60; margin-bottom: 4px;">(วงกลมสีเขียวเล็กบน Map = ชื่อสถานที่ OSM • Double-click กรอบ OSM เพื่อดึงชื่อ/พิกัด/ประวัติที่ไกด์เล่า)</div>
+                <div style="font-size: 10px; color: #27ae60; margin-bottom: 4px;">(วงกลมสีเขียวเล็กบน Map = ชื่อสถานที่ OSM • Double-click กรอบ OSM เพื่อดึงชื่อ/พิกัด/ประวัติ)</div>
                 <div id="map" style="width: 100%; height: 280px; border-radius: 8px; border: 1px solid #ccc; position: relative;"></div>
 
                 <!-- Prompt ยืนยันการย้ายจุดหลังลากหมุดเสร็จ -->
@@ -692,7 +692,7 @@
                     <input type="text" id="spotLat" placeholder="Latitude" style="width:50%; padding:6px; box-sizing:border-box; border: 1px solid #ccc; border-radius: 5px; font-size: 12px;">
                     <input type="text" id="spotLng" placeholder="Longitude" style="width:50%; padding:6px; box-sizing:border-box; border: 1px solid #ccc; border-radius: 5px; font-size: 12px;">
                 </div>
-                <textarea id="spotStory" class="story-textarea-10lines" placeholder="ประวัติสถานที่ (สรุปโดย AI ไม่เกิน 10 บรรทัด จาก visit.bangkok.go.th / ticket2attraction / tripadvisor) — ตรวจสอบก่อนกดบันทึก"></textarea>
+                <textarea id="spotStory" class="story-textarea-10lines" placeholder="ประวัติสถานที่ (สรุปไม่เกิน 10 บรรทัด หรือ - หากไม่พบข้อมูล) — ตรวจสอบก่อนกดบันทึก"></textarea>
                 
                 <div style="display: flex; gap: 6px;">
                     <button id="saveSpotBtn" onclick="addSpot()" style="background:#27ae60; color:white; border:none; padding:8px; flex: 1; border-radius:5px; font-weight:bold; cursor:pointer; font-size:13px;">➕ บันทึกจุดท่องเที่ยวนี้</button>
@@ -1451,7 +1451,7 @@
         }).openTooltip();
     }
 
-    // ================= ค้นหาประวัติสถานที่ตามลำดับเว็บไซต์ที่กำหนด แล้วสรุปไม่เกิน 10 บรรทัด =================
+    // ================= ค้นหาประวัติสถานที่ตามลำดับเว็บไซต์ที่กำหนด แล้วสรุปไม่เกิน 10 บรรทัด (ไม่พบใส่ -) =================
     const TOUR_SOURCE_URLS = [
         "https://visit.bangkok.go.th/",
         "https://www.ticket2attraction.com/th/blogs/bangkok-attractions/",
@@ -1470,12 +1470,11 @@
             .filter(l => l.length >= 15);
 
         const q = (queryTerm || "").toLowerCase().trim();
-        const matched = q ? rawLines.filter(l => l.toLowerCase().includes(q)) : [];
-        return matched.length > 0 ? matched : rawLines.slice(0, 12);
+        if (!q) return [];
+        return rawLines.filter(l => l.toLowerCase().includes(q));
     }
 
     async function fetchFromTargetSourceUrl(sourceUrl, placeName) {
-        // พยายามดึงเนื้อหาจาก URL เป้าหมายโดยตรงก่อน และหากติด CORS จะลองผ่าน Jina Reader / AllOrigins
         const endpoints = [
             sourceUrl,
             `https://r.jina.ai/${sourceUrl}`,
@@ -1493,68 +1492,53 @@
                 if (!bodyText || bodyText.trim().length < 50) continue;
 
                 const q = (placeName || "").toLowerCase().trim();
+                if (!q) continue;
+
                 const lines = bodyText.includes("<html") || bodyText.includes("<!DOCTYPE")
                     ? stripHtmlToLines(bodyText, placeName)
                     : bodyText
                         .split(/\r?\n/)
                         .map(l => l.replace(/^[#*\-\s]+/, "").replace(/\s+/g, " ").trim())
-                        .filter(l => l.length >= 15);
+                        .filter(l => l.length >= 15 && l.toLowerCase().includes(q));
 
-                const matchedLines = q ? lines.filter(l => l.toLowerCase().includes(q)) : [];
-                if (matchedLines.length > 0) {
+                if (lines.length > 0) {
                     return {
                         found: true,
-                        sourceUrl,
-                        snippets: matchedLines.slice(0, 5)
+                        snippets: lines.slice(0, 10)
                     };
                 }
             } catch (_) {
                 // ลอง endpoint ถัดไปในแหล่งเดียวกัน
             }
         }
-        return { found: false, sourceUrl, snippets: [] };
+        return { found: false, snippets: [] };
     }
 
     async function lookupPlaceHistoryFromSources(placeName) {
         const cleanName = (placeName || "").trim();
+        if (!cleanName) {
+            return { found: false, snippets: [] };
+        }
         for (const url of TOUR_SOURCE_URLS) {
             const result = await fetchFromTargetSourceUrl(url, cleanName);
             if (result.found && result.snippets.length > 0) {
                 return result;
             }
         }
-        return {
-            found: false,
-            sourceUrl: TOUR_SOURCE_URLS[TOUR_SOURCE_URLS.length - 1],
-            snippets: []
-        };
+        return { found: false, snippets: [] };
     }
 
     function summarizeToMax10GuideLines(placeName, lookupResult) {
-        const cleanName = (placeName || "จุดท่องเที่ยว").trim();
-        const hostName = (() => {
-            try { return new URL(lookupResult.sourceUrl).hostname; } catch (_) { return "แหล่งข้อมูลท่องเที่ยว"; }
-        })();
-
-        const intro = `สวัสดีครับลูกทัวร์ วันนี้พาแวะ "${cleanName}" ครับ (อ้างอิง ${hostName})`;
-        const outro = `ลองชมบรรยากาศและเก็บภาพกันก่อนปั่นต่อไปครับ`;
-
-        let bodyLines = [];
-        if (lookupResult.found && lookupResult.snippets.length > 0) {
-            bodyLines = lookupResult.snippets.slice(0, 6).map(snip => {
-                const trimmed = snip.length > 95 ? snip.slice(0, 92).trim() + "..." : snip;
-                return `• ${trimmed}`;
-            });
-        } else {
-            bodyLines = [
-                `• ตรวจค้นจาก visit.bangkok.go.th, ticket2attraction และ tripadvisor แล้วไม่พบข้อมูลตรงชื่อ "${cleanName}"`,
-                `• เป็นจุดแวะสำคัญบนเส้นทางในกรุงเทพฯ ที่น่าสนใจทั้งเรื่องราวและมุมถ่ายภาพ`,
-                `• ไกด์สามารถแก้ไขหรือเติมรายละเอียดเพิ่มเติมได้ในช่องนี้ก่อนกดบันทึก`
-            ];
+        if (!lookupResult || !lookupResult.found || !Array.isArray(lookupResult.snippets) || lookupResult.snippets.length === 0) {
+            return "-";
         }
 
-        const allLines = [intro, ...bodyLines, outro];
-        return allLines.slice(0, 10).join("\n");
+        const lines = lookupResult.snippets
+            .map(snip => snip.trim())
+            .filter(Boolean)
+            .map(snip => snip.length > 110 ? snip.slice(0, 107).trim() + "..." : snip);
+
+        return lines.slice(0, 10).join("\n");
     }
 
     async function geocodePlaceNameForManualInput(placeName) {
@@ -1630,7 +1614,7 @@
         const storyEl = document.getElementById("spotStory");
 
         if (storyEl) {
-            storyEl.value = `กำลังค้นหาพิกัดและประวัติ "${cleanName}" จาก visit.bangkok.go.th...`;
+            storyEl.value = "";
         }
 
         const geo = await geocodePlaceNameForManualInput(cleanName);
@@ -1765,10 +1749,10 @@
 
         const initialName = (latestOsmInfo && latestOsmInfo.placeName && !latestOsmInfo.placeName.startsWith("พิกัด "))
             ? latestOsmInfo.placeName
-            : "กำลังค้นหาชื่อสถานที่...";
+            : "";
 
         if (nameInputEl) nameInputEl.value = initialName;
-        if (storyInputEl) storyInputEl.value = "กำลังค้นหาประวัติและสรุปไม่เกิน 10 บรรทัด...";
+        if (storyInputEl) storyInputEl.value = "";
 
         const osmSpot = await findNearestTouristOsmSpotWithin30m(targetLat, targetLng);
         if (nameInputEl) nameInputEl.value = osmSpot.name;
@@ -1969,7 +1953,7 @@
             (latestOsmInfo && latestOsmInfo.placeName && !latestOsmInfo.placeName.startsWith("พิกัด "))
                 ? (spot.name || latestOsmInfo.placeName)
                 : spot.name;
-        const storyText = spot.story || resolvedName;
+        const storyText = spot.story || "-";
 
         masterSpots = masterSpots.map(s =>
             s.id === spot.id
