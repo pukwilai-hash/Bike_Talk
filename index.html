@@ -582,19 +582,89 @@
             100% { transform: translateX(-100%); }
         }
 
-        /* กล่องคำบรรยายตามภาษาที่เลือก ขยายเป็นสี่เหลี่ยมจัตุรัส */
+        /* วงกลมสีเขียวเล็กๆ บน Map รอบชื่อสถานที่ (OSM) */
+        .osm-green-circle-wrapper {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            transform: translate(-8px, -8px);
+            pointer-events: auto;
+            white-space: nowrap;
+        }
+        .osm-green-circle-dot {
+            width: 16px;
+            height: 16px;
+            min-width: 16px;
+            min-height: 16px;
+            border-radius: 50%;
+            background: rgba(39, 174, 96, 0.25);
+            border: 2.5px solid #27ae60;
+            box-shadow: 0 0 6px rgba(39, 174, 96, 0.7);
+            box-sizing: border-box;
+        }
+        .osm-green-circle-label {
+            background: rgba(255, 255, 255, 0.94);
+            color: #1e8449;
+            border: 1.5px solid #27ae60;
+            border-radius: 10px;
+            padding: 1px 6px;
+            font-size: 10px;
+            font-weight: 800;
+            box-shadow: 0 1px 4px rgba(0, 0, 0, 0.18);
+            max-width: 170px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        /* แถวบนของหน้าลูกทัวร์: ปุ่ม Back + ปุ่ม GPS วงกลมขนาดเล็ก */
+        .listener-top-bar {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 8px;
+            margin-bottom: 4px;
+        }
+        .listener-gps-circle-btn {
+            width: 34px;
+            height: 34px;
+            min-width: 34px;
+            min-height: 34px;
+            border-radius: 50%;
+            border: 2px solid #ffffff;
+            background: #2980b9;
+            color: #ffffff;
+            font-size: 10px;
+            font-weight: 800;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25);
+            transition: background 0.2s, transform 0.15s;
+            padding: 0;
+            flex-shrink: 0;
+        }
+        .listener-gps-circle-btn.active {
+            background: #27ae60;
+        }
+        .listener-gps-circle-btn:active {
+            transform: scale(0.94);
+        }
+
+        /* กล่องคำบรรยายตามภาษาที่เลือก ลดความสูงเหลือ 10 บรรทัด */
         .lang-caption-square-box {
             width: 100%;
-            aspect-ratio: 1 / 1;
+            height: 235px;
+            max-height: 235px;
             box-sizing: border-box;
             background: #fff8eb;
             border: 2px solid #e67e22;
             border-radius: 12px;
-            padding: 12px 14px;
+            padding: 10px 12px;
             margin-top: 8px;
-            font-size: 14px;
+            font-size: 13.5px;
             color: #2c3e50;
-            line-height: 1.55;
+            line-height: 1.5;
             overflow-y: auto;
             display: flex;
             flex-direction: column;
@@ -782,10 +852,13 @@
             </div>
         </div>
 
-        <!-- หน้าจอหลักลูกทัวร์: คำบรรยายสี่เหลี่ยมจัตุรัส และ Map ด้านล่างต่อจากคำบรรยาย -->
+        <!-- หน้าจอหลักลูกทัวร์: คำบรรยายสูง 10 บรรทัด ปุ่ม GPS วงกลมขนาดเล็ก และ Map เปลี่ยนภาษาตามเมนูที่เลือก -->
         <div id="tour-screen">
             <div class="tour-top-section">
-                <button class="back-btn" onclick="goBackToLang()">⬅ Change Language</button>
+                <div class="listener-top-bar">
+                    <button id="listenerBackBtn" class="back-btn" onclick="goBackToLang()" style="margin-bottom: 0;">⬅ Change Language</button>
+                    <button id="startBtn" type="button" class="listener-gps-circle-btn" onclick="toggleListenerGps()" title="GPS">GPS</button>
+                </div>
 
                 <!-- กรอบคำบรรยายตัวหนังสือใหญ่เลื่อนเต็มหน้าจอ วางด้านบนใต้ปุ่ม Back -->
                 <div id="subtitle-marquee-container" class="subtitle-marquee-box">
@@ -795,29 +868,27 @@
 
                 <div id="native-notice" class="badge-native">Translating...</div>
 
-                <!-- กล่องคำบรรยายขนาดสี่เหลี่ยมจัตุรัส -->
+                <!-- กล่องคำบรรยายขนาด 10 บรรทัด -->
                 <div id="langCaptionSquareBox" class="lang-caption-square-box">
-                    <div style="font-size: 11px; font-weight: bold; color: #e67e22; margin-bottom: 6px;">
-                        📝 คำบรรยายภาษาที่เลือก (<span id="activeLangCode">th-TH</span>):
+                    <div style="font-size: 11px; font-weight: bold; color: #e67e22; margin-bottom: 4px;">
+                        📝 <span id="captionHeaderLabel">คำบรรยายภาษาที่เลือก</span> (<span id="activeLangCode">th-TH</span>):
                     </div>
                     <div id="selectedLangStoryText" style="white-space: pre-line;">กำลังโหลดคำบรรยาย...</div>
                 </div>
 
-                <!-- แผนที่ด้านล่างต่อจากคำบรรยาย -->
+                <!-- แผนที่ด้านล่างต่อจากคำบรรยาย (เปลี่ยนภาษาของข้อความใน Map ตามภาษาที่เลือก) -->
                 <div class="card" style="padding: 8px;">
-                    <h4 style="margin: 0 0 6px 0; color: #2c3e50; font-size: 13px;">🗺️ Tour Map</h4>
+                    <h4 id="listenerMapTitle" style="margin: 0 0 6px 0; color: #2c3e50; font-size: 13px;">🗺️ แผนที่ท่องเที่ยว</h4>
                     <div id="listenerMap" class="listener-map-box"></div>
                 </div>
 
-                <button id="startBtn" class="action-btn" onclick="startListener()">🔊 Start GPS Tracking</button>
-
                 <div class="card">
-                    <h3>📍 GPS Status (30m Radius)</h3>
+                    <h3 id="listenerGpsCardTitle">📍 สถานะ GPS (รัศมี 30 เมตร)</h3>
                     <div class="status-box">
-                        <p id="status">Click start to activate GPS...</p>
+                        <p id="status">กดปุ่มวงกลม GPS ด้านบนเพื่อเริ่มติดตาม...</p>
                         <p id="coords" style="font-size: 11px; color: #7f8c8d;">Lat: -, Lng: -</p>
                         <hr style="border: 0; border-top: 1px solid #d5dbdb; margin: 8px 0;">
-                        <h4 id="currentPlace" style="color: #2c3e50; margin: 3px 0;">Current Narration: -</h4>
+                        <h4 id="currentPlace" style="color: #2c3e50; margin: 3px 0;">การบรรยายปัจจุบัน: -</h4>
                     </div>
                 </div>
             </div>
@@ -995,8 +1066,10 @@
     let pendingMoveData = null;
 
     let listenerMap = null;
+    let listenerTileLayer = null;
     let listenerMarkersLayer = null;
     let listenerUserMarker = null;
+    let osmCenterCircleMarker = null;
 
     let centeredSpotId = null;
     let latestOsmInfo = {
@@ -1020,6 +1093,163 @@
         'vi-VN': 'Thuyết minh điểm đến',
         'id-ID': 'Panduan audio untuk'
     };
+
+    const LISTENER_LOCALE_UI = {
+        'th-TH': {
+            osmLang: 'th',
+            backBtn: '⬅ เปลี่ยนภาษา',
+            captionHeader: 'คำบรรยายภาษาที่เลือก',
+            mapTitle: '🗺️ แผนที่เส้นทางท่องเที่ยว',
+            gpsCardTitle: '📍 สถานะ GPS (รัศมี 30 เมตร)',
+            gpsIdle: 'กดปุ่มวงกลม GPS ด้านบนเพื่อเริ่มติดตาม...',
+            gpsActive: 'กำลังติดตามพิกัด GPS... (พร้อมบรรยาย)',
+            userPopup: 'ตำแหน่งปัจจุบันของคุณ',
+            spotPrefix: 'จุดท่องเที่ยว',
+            narrating: '🎙️ กำลังบรรยาย',
+            finished: '✅ บรรยายจบแล้ว เดินทางต่อได้เลย...',
+            riding: 'กำลังปั่นจักรยานตามเส้นทาง... (นอกรัศมี 30 ม.)',
+            currentPrefix: 'การบรรยายปัจจุบัน'
+        },
+        'en-US': {
+            osmLang: 'en',
+            backBtn: '⬅ Change Language',
+            captionHeader: 'Selected Language Narration',
+            mapTitle: '🗺️ Tour Route Map',
+            gpsCardTitle: '📍 GPS Status (30m Radius)',
+            gpsIdle: 'Tap the circular GPS button above to start tracking...',
+            gpsActive: 'Tracking GPS coordinates... (Ready)',
+            userPopup: 'Your Current Location',
+            spotPrefix: 'Tour Spot',
+            narrating: '🎙️ Narrating',
+            finished: '✅ Narration finished. Continuing tour...',
+            riding: 'Riding along route... (Outside 30m radius)',
+            currentPrefix: 'Current Narration'
+        },
+        'zh-CN': {
+            osmLang: 'zh-CN',
+            backBtn: '⬅ 更改语言',
+            captionHeader: '所选语言解说',
+            mapTitle: '🗺️ 旅游路线地图',
+            gpsCardTitle: '📍 GPS 状态（30米范围）',
+            gpsIdle: '点击上方圆形 GPS 按钮开始定位...',
+            gpsActive: '正在追踪 GPS 坐标...（已就绪）',
+            userPopup: '您当前的位置',
+            spotPrefix: '旅游景点',
+            narrating: '🎙️ 正在解说',
+            finished: '✅ 解说结束，继续骑行游览...',
+            riding: '沿路线骑行中...（30米范围外）',
+            currentPrefix: '当前解说'
+        },
+        'zh-HK': {
+            osmLang: 'zh-TW',
+            backBtn: '⬅ 更改語言',
+            captionHeader: '已選語言導賞',
+            mapTitle: '🗺️ 旅遊路線地圖',
+            gpsCardTitle: '📍 GPS 狀態（30米範圍）',
+            gpsIdle: '撳上方圓形 GPS 掣開始追蹤...',
+            gpsActive: '正在追蹤 GPS 座標...（準備就緒）',
+            userPopup: '你而家嘅位置',
+            spotPrefix: '旅遊景點',
+            narrating: '🎙️ 正在導賞',
+            finished: '✅ 導賞完畢，繼續行程...',
+            riding: '沿路線踩單車中...（30米範圍外）',
+            currentPrefix: '目前導賞'
+        },
+        'ja-JP': {
+            osmLang: 'ja',
+            backBtn: '⬅ 言語を変更',
+            captionHeader: '選択言語のガイド解説',
+            mapTitle: '🗺️ ツアーマップ',
+            gpsCardTitle: '📍 GPSステータス（半径30m）',
+            gpsIdle: '上の丸いGPSボタンを押して追跡を開始...',
+            gpsActive: 'GPS座標を追跡中...（準備完了）',
+            userPopup: '現在地',
+            spotPrefix: '観光スポット',
+            narrating: '🎙️ ガイド中',
+            finished: '✅ 解説が終了しました。ツアーを続行します...',
+            riding: 'ルートを走行中...（半径30m圏外）',
+            currentPrefix: '現在のガイド'
+        },
+        'fr-FR': {
+            osmLang: 'fr',
+            backBtn: '⬅ Changer de langue',
+            captionHeader: 'Narration dans la langue choisie',
+            mapTitle: '🗺️ Carte du circuit',
+            gpsCardTitle: '📍 Statut GPS (rayon 30 m)',
+            gpsIdle: 'Appuyez sur le bouton rond GPS en haut pour démarrer...',
+            gpsActive: 'Suivi GPS actif... (Prêt)',
+            userPopup: 'Votre position actuelle',
+            spotPrefix: 'Point touristique',
+            narrating: '🎙️ Narration',
+            finished: '✅ Narration terminée. Poursuite du circuit...',
+            riding: 'En route sur le parcours... (Hors rayon 30 m)',
+            currentPrefix: 'Narration actuelle'
+        },
+        'de-DE': {
+            osmLang: 'de',
+            backBtn: '⬅ Sprache ändern',
+            captionHeader: 'Beschreibung in gewählter Sprache',
+            mapTitle: '🗺️ Tourenkarte',
+            gpsCardTitle: '📍 GPS-Status (30 m Radius)',
+            gpsIdle: 'Tippen Sie oben auf den runden GPS-Button...',
+            gpsActive: 'GPS-Koordinaten werden verfolgt... (Bereit)',
+            userPopup: 'Ihr aktueller Standort',
+            spotPrefix: 'Sehenswürdigkeit',
+            narrating: '🎙️ Erzählung',
+            finished: '✅ Erzählung beendet. Tour wird fortgesetzt...',
+            riding: 'Fahrt entlang der Route... (Außerhalb 30 m)',
+            currentPrefix: 'Aktuelle Erzählung'
+        },
+        'es-ES': {
+            osmLang: 'es',
+            backBtn: '⬅ Cambiar idioma',
+            captionHeader: 'Narración en el idioma seleccionado',
+            mapTitle: '🗺️ Mapa del recorrido',
+            gpsCardTitle: '📍 Estado del GPS (radio de 30 m)',
+            gpsIdle: 'Pulsa el botón circular GPS arriba para iniciar...',
+            gpsActive: 'Rastreando coordenadas GPS... (Listo)',
+            userPopup: 'Tu ubicación actual',
+            spotPrefix: 'Punto turístico',
+            narrating: '🎙️ Narrando',
+            finished: '✅ Narración finalizada. Continuando recorrido...',
+            riding: 'Recorriendo la ruta... (Fuera de 30 m)',
+            currentPrefix: 'Narración actual'
+        },
+        'vi-VN': {
+            osmLang: 'vi',
+            backBtn: '⬅ Đổi ngôn ngữ',
+            captionHeader: 'Thuyết minh theo ngôn ngữ đã chọn',
+            mapTitle: '🗺️ Bản đồ hành trình',
+            gpsCardTitle: '📍 Trạng thái GPS (bán kính 30m)',
+            gpsIdle: 'Nhấn nút tròn GPS phía trên để bắt đầu...',
+            gpsActive: 'Đang theo dõi tọa độ GPS... (Sẵn sàng)',
+            userPopup: 'Vị trí hiện tại của bạn',
+            spotPrefix: 'Điểm tham quan',
+            narrating: '🎙️ Đang thuyết minh',
+            finished: '✅ Đã thuyết minh xong. Tiếp tục hành trình...',
+            riding: 'Đang di chuyển trên lộ trình... (Ngoài bán kính 30m)',
+            currentPrefix: 'Thuyết minh hiện tại'
+        },
+        'id-ID': {
+            osmLang: 'id',
+            backBtn: '⬅ Ganti Bahasa',
+            captionHeader: 'Narasi Bahasa Terpilih',
+            mapTitle: '🗺️ Peta Rute Tur',
+            gpsCardTitle: '📍 Status GPS (Radius 30m)',
+            gpsIdle: 'Tekan tombol bulat GPS di atas untuk mulai...',
+            gpsActive: 'Melacak koordinat GPS... (Siap)',
+            userPopup: 'Lokasi Anda Saat Ini',
+            spotPrefix: 'Titik Wisata',
+            narrating: '🎙️ Menceritakan',
+            finished: '✅ Narasi selesai. Melanjutkan tur...',
+            riding: 'Bersepeda di sepanjang rute... (Di luar radius 30m)',
+            currentPrefix: 'Narasi Saat Ini'
+        }
+    };
+
+    function getListenerLocale() {
+        return LISTENER_LOCALE_UI[currentLang] || LISTENER_LOCALE_UI['en-US'];
+    }
 
     const orangeSpotIcon = L.divIcon({
         className: 'orange-marker-pin',
@@ -1100,6 +1330,49 @@
         }
     ];
 
+    function getLocalizedMapTileUrl(langCode) {
+        const loc = LISTENER_LOCALE_UI[langCode] || LISTENER_LOCALE_UI['en-US'];
+        const osmLang = loc.osmLang || 'en';
+        if (osmLang === 'th') {
+            return {
+                url: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+                attribution: '© OpenStreetMap'
+            };
+        }
+        return {
+            url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}',
+            attribution: '© Esri, OpenStreetMap'
+        };
+    }
+
+    function updateListenerTileLanguage() {
+        if (!listenerMap) return;
+        const tileCfg = getLocalizedMapTileUrl(currentLang);
+        if (listenerTileLayer) {
+            listenerMap.removeLayer(listenerTileLayer);
+        }
+        listenerTileLayer = L.tileLayer(tileCfg.url, {
+            minZoom: 3,
+            maxNativeZoom: 19,
+            maxZoom: 22,
+            attribution: tileCfg.attribution
+        }).addTo(listenerMap);
+    }
+
+    function getSpotDisplayNameByLang(spot, langCode) {
+        if (!spot) return "";
+        if (spot.names && spot.names[langCode]) {
+            return spot.names[langCode];
+        }
+        const rawName = spot.name || "Spot";
+        if (langCode === 'th-TH') return rawName;
+        const parenMatch = rawName.match(/\(([^)]+)\)/);
+        if (parenMatch && langCode === 'en-US') {
+            return parenMatch[1].trim();
+        }
+        return rawName;
+    }
+
     function initListenerMap() {
         if (!listenerMap) {
             listenerMap = L.map('listenerMap', {
@@ -1107,15 +1380,10 @@
                 maxZoom: 22
             }).setView([13.7515, 100.4927], 16);
 
-            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-                minZoom: 3,
-                maxNativeZoom: 19,
-                maxZoom: 22,
-                attribution: '© OpenStreetMap'
-            }).addTo(listenerMap);
-
+            updateListenerTileLanguage();
             listenerMarkersLayer = L.layerGroup().addTo(listenerMap);
         } else {
+            updateListenerTileLanguage();
             listenerMap.invalidateSize();
         }
         refreshListenerMapMarkers();
@@ -1124,6 +1392,7 @@
     function refreshListenerMapMarkers() {
         if (!listenerMap || !listenerMarkersLayer) return;
         listenerMarkersLayer.clearLayers();
+        const loc = getListenerLocale();
 
         const combined = [
             ...tourSpots,
@@ -1134,25 +1403,27 @@
             const lat = Number(spot.lat);
             const lng = Number(spot.lng);
             if (!isNaN(lat) && !isNaN(lng)) {
+                const displayName = getSpotDisplayNameByLang(spot, currentLang);
                 L.marker([lat, lng])
                     .addTo(listenerMarkersLayer)
-                    .bindPopup(`<b>${escapeHtml(spot.name || "Spot")}</b>`);
+                    .bindPopup(`<b>${escapeHtml(loc.spotPrefix)}: ${escapeHtml(displayName)}</b>`);
             }
         });
     }
 
     function updateListenerMapPosition(lat, lng, focusSpot) {
         if (!listenerMap) return;
+        const loc = getListenerLocale();
         const latFixed = Number(lat).toFixed(5);
         const lngFixed = Number(lng).toFixed(5);
 
         if (!listenerUserMarker) {
             listenerUserMarker = L.marker([lat, lng], { icon: orangeSpotIcon })
                 .addTo(listenerMap)
-                .bindPopup(`ตำแหน่งปัจจุบัน<br>Lat: ${latFixed}, Lng: ${lngFixed}`);
+                .bindPopup(`${escapeHtml(loc.userPopup)}<br>Lat: ${latFixed}, Lng: ${lngFixed}`);
         } else {
             listenerUserMarker.setLatLng([lat, lng]);
-            listenerUserMarker.bindPopup(`ตำแหน่งปัจจุบัน<br>Lat: ${latFixed}, Lng: ${lngFixed}`);
+            listenerUserMarker.bindPopup(`${escapeHtml(loc.userPopup)}<br>Lat: ${latFixed}, Lng: ${lngFixed}`);
         }
 
         if (focusSpot && !isNaN(Number(focusSpot.lat)) && !isNaN(Number(focusSpot.lng))) {
@@ -1275,6 +1546,27 @@
         return `${prefix} (${spotName}): ${rawStory}`;
     }
 
+    function applyListenerLanguageLabels() {
+        const loc = getListenerLocale();
+        const backBtn = document.getElementById("listenerBackBtn");
+        const capHeader = document.getElementById("captionHeaderLabel");
+        const mapTitle = document.getElementById("listenerMapTitle");
+        const gpsCardTitle = document.getElementById("listenerGpsCardTitle");
+        const statusEl = document.getElementById("status");
+        const currentPlaceEl = document.getElementById("currentPlace");
+
+        if (backBtn) backBtn.innerText = loc.backBtn;
+        if (capHeader) capHeader.innerText = loc.captionHeader;
+        if (mapTitle) mapTitle.innerText = loc.mapTitle;
+        if (gpsCardTitle) gpsCardTitle.innerText = loc.gpsCardTitle;
+        if (statusEl) {
+            statusEl.innerText = watchId !== null ? loc.gpsActive : loc.gpsIdle;
+        }
+        if (currentPlaceEl && currentPlaceEl.innerText.includes(": -")) {
+            currentPlaceEl.innerText = `${loc.currentPrefix}: -`;
+        }
+    }
+
     function setLanguage(langCode, langName, nativeNoticeText) {
         currentLang = langCode;
         document.getElementById("native-notice").innerText = `${langName} — ${nativeNoticeText}`;
@@ -1285,12 +1577,14 @@
         tourEl.style.display = "flex";
         tourEl.classList.add("active-tour");
 
+        applyListenerLanguageLabels();
         resetAllSpotsPlayedState();
 
         const targetSpot = activeSpotObj || tourSpots[0];
         const instantText = getInstantStoryByLang(targetSpot, currentLang);
+        const spotDisplay = getSpotDisplayNameByLang(targetSpot, currentLang);
         document.getElementById("selectedLangStoryText").innerText = instantText || "-";
-        showSubtitleMarquee(targetSpot.name || "Tour Spot", instantText || "-");
+        showSubtitleMarquee(spotDisplay || "Tour Spot", instantText || "-");
 
         setTimeout(() => {
             initListenerMap();
@@ -1318,16 +1612,27 @@
         track.style.animation = 'none';
         void track.offsetWidth;
         track.textContent = text;
-        const durationSec = Math.max(12, Math.min(36, Math.ceil(text.length * 0.22)));
+        const durationSec = Math.max(10, Math.min(30, Math.ceil(text.length * 0.18)));
         track.style.animation = `marqueeScroll ${durationSec}s linear infinite`;
         box.style.display = "block";
     }
 
+    function toggleListenerGps() {
+        if (watchId !== null) {
+            stopListener();
+        } else {
+            startListener();
+        }
+    }
+
     function startListener() {
-        document.getElementById("status").innerText = "Tracking GPS coordinates... (Ready)";
-        document.getElementById("startBtn").disabled = true;
-        document.getElementById("startBtn").style.backgroundColor = "#95a5a6";
-        document.getElementById("startBtn").innerText = "GPS Tracking Active...";
+        const loc = getListenerLocale();
+        const btn = document.getElementById("startBtn");
+        document.getElementById("status").innerText = loc.gpsActive;
+        if (btn) {
+            btn.classList.add("active");
+            btn.innerText = "GPS";
+        }
 
         if ('speechSynthesis' in window) {
             try {
@@ -1351,13 +1656,20 @@
     }
 
     function stopListener() {
+        const loc = getListenerLocale();
         if (watchId !== null) {
             navigator.geolocation.clearWatch(watchId);
             watchId = null;
         }
-        document.getElementById("startBtn").disabled = false;
-        document.getElementById("startBtn").style.backgroundColor = "#2980b9";
-        document.getElementById("startBtn").innerText = "🔊 Start GPS Tracking";
+        const btn = document.getElementById("startBtn");
+        if (btn) {
+            btn.classList.remove("active");
+            btn.innerText = "GPS";
+        }
+        const statusEl = document.getElementById("status");
+        if (statusEl) {
+            statusEl.innerText = loc.gpsIdle;
+        }
     }
 
     function toggleBroadcast() {
@@ -1396,6 +1708,7 @@
         ];
 
         let insideAnySpot = false;
+        const loc = getListenerLocale();
 
         for (const spot of combinedSpots) {
             const distance = getDistanceFromLatLonInMeters(currentLat, currentLng, spot.lat, spot.lng);
@@ -1404,14 +1717,14 @@
                 insideAnySpot = true;
                 activeSpotObj = spot;
                 const storyText = getInstantStoryByLang(spot, currentLang);
-                const titleText = spot.name || "Tour Spot";
+                const titleText = getSpotDisplayNameByLang(spot, currentLang) || "Tour Spot";
 
                 document.getElementById("selectedLangStoryText").innerText = storyText || "-";
                 showSubtitleMarquee(titleText, storyText || "-");
                 updateListenerMapPosition(currentLat, currentLng, spot);
 
                 if (!spot.played) {
-                    document.getElementById("currentPlace").innerText = `🎙️ Narrating: ${titleText} (${Math.round(distance)}m away)`;
+                    document.getElementById("currentPlace").innerText = `${loc.narrating}: ${titleText} (${Math.round(distance)}m)`;
                     speakStory(storyText);
                     spot.played = true;
                     const origTour = tourSpots.find(t => t.id === spot.id);
@@ -1431,7 +1744,7 @@
         }
 
         if (!insideAnySpot) {
-            document.getElementById("currentPlace").innerText = "Riding along route... (Outside 30m radius)";
+            document.getElementById("currentPlace").innerText = loc.riding;
         }
     }
 
@@ -1455,15 +1768,16 @@
     }
 
     function speakStory(text) {
+        const loc = getListenerLocale();
         if ('speechSynthesis' in window) {
             try {
                 window.speechSynthesis.cancel();
                 const utterance = new SpeechSynthesisUtterance(text);
                 utterance.lang = currentLang;
-                utterance.rate = 1.0;
+                utterance.rate = 1.3;
 
                 utterance.onend = function () {
-                    document.getElementById("currentPlace").innerText = "✅ Narration finished. Continuing tour...";
+                    document.getElementById("currentPlace").innerText = loc.finished;
                 };
 
                 window.speechSynthesis.speak(utterance);
@@ -1725,7 +2039,9 @@ out center tags;`;
         }
 
         if (!eraText) {
-            const reignMatch = text.match(/(รัชสมัย[^ฯ,.\n]{2,45}|สมัย[^ฯ,.\n]{2,35})/);
+            const reignMatch = text.match(/(รัชสมัย[^ฯ,.
+]{2,45}|สมัย[^ฯ,.
+]{2,35})/);
             if (reignMatch) {
                 eraText = reignMatch[1].trim();
             }
@@ -1736,7 +2052,13 @@ out center tags;`;
 
     function extractFounderText(text) {
         if (!text) return "";
-        const founderMatch = text.match(/(สร้างขึ้นโดย[^ฯ,.\n]{2,50}|สร้างโดย[^ฯ,.\n]{2,50}|สถาปนาโดย[^ฯ,.\n]{2,50}|พระบาทสมเด็จพระ[^ฯ,.\n]{3,55}|สมเด็จพระเจ้าบรมวงศ์เธอ[^ฯ,.\n]{3,55}|สมเด็จพระ[^ฯ,.\n]{3,55})/);
+        const founderMatch = text.match(/(สร้างขึ้นโดย[^ฯ,.
+]{2,50}|สร้างโดย[^ฯ,.
+]{2,50}|สถาปนาโดย[^ฯ,.
+]{2,50}|พระบาทสมเด็จพระ[^ฯ,.
+]{3,55}|สมเด็จพระเจ้าบรมวงศ์เธอ[^ฯ,.
+]{3,55}|สมเด็จพระ[^ฯ,.
+]{3,55})/);
         return founderMatch ? founderMatch[1].trim() : "";
     }
 
@@ -1794,32 +2116,21 @@ out center tags;`;
         }
 
         if (/จุฑาธุช/.test(name)) {
-            return [
-                `ชื่อสถานที่: ${name}`,
-                `สร้างขึ้นเมื่อใด: พ.ศ. 2466 (รัชสมัยพระบาทสมเด็จพระมงกุฎเกล้าเจ้าอยู่หัว รัชกาลที่ 6)`,
-                `อายุเท่าไหร่: ประมาณ 103 ปี`,
-                `โดยใคร: อนุสรณ์รำลึกถึงสมเด็จพระเจ้าบรมวงศ์เธอ เจ้าฟ้าจุฑาธุชธราดิลก กรมขุนเพ็ชรบูรณ์อินทราไชย พระราชโอรสในพระบาทสมเด็จพระจุลจอมเกล้าเจ้าอยู่หัว และสมเด็จพระศรีพัชรินทราบรมราชินีนาถ`,
-                `สำคัญอย่างไร: ทรงมีพระดำริก่อตั้งโรงเรียนเพาะช่าง (วิทยาลัยเพาะช่าง มทร.รัตนโกสินทร์) และทรงเป็นพระอาจารย์ในจุฬาลงกรณ์มหาวิทยาลัยและองคมนตรี`,
-                `จุดเด่นของสถานที่นี้คืออะไร: เป็นอนุสรณ์สถานสำคัญที่สะท้อนพระเกียรติคุณและบทบาทด้านศิลปะและการศึกษาไทย`
-            ].join("\n");
+            return `ทุกท่านครับ ตอนนี้เรามาถึง "${name}" กันแล้วนะครับ สถานที่แห่งนี้สร้างขึ้นตั้งแต่ปี พ.ศ. 2466 ในรัชสมัยรัชกาลที่ 6 มีอายุกว่า 103 ปีแล้วครับ สร้างขึ้นเพื่อเป็นอนุสรณ์รำลึกถึงสมเด็จพระเจ้าบรมวงศ์เธอ เจ้าฟ้าจุฑาธุชธราดิลก กรมขุนเพ็ชรบูรณ์อินทราไชย พระราชโอรสในรัชกาลที่ 5 ผู้ทรงมีพระดำริก่อตั้งโรงเรียนเพาะช่าง และทรงวางรากฐานสำคัญด้านศิลปะและการศึกษาของไทย ให้ทุกท่านได้ซึมซับบรรยากาศและเรื่องราวอันทรงคุณค่าตรงหน้านี้ครับ`;
         }
 
         if (isMarketOrRestaurant(name, tags, categoryLabel)) {
             const michelinTag = tags["michelin"] || tags["guide:michelin"] || "";
-            const michelinText = michelinTag
-                ? `มิชลิน: ${michelinTag}`
-                : "มิชลิน: ไม่อยู่ในทำเนียบดาวมิชลินที่ระบุในข้อมูล (ตรวจสอบรายการล่าสุดได้จากคู่มือมิชลินไกด์)";
+            const michelinLine = michelinTag
+                ? `และที่พิเศษสุดคือร้านนี้ได้รับการการันตีระดับมิชลิน (${michelinTag}) ด้วยนะครับ`
+                : `แม้จะไม่ได้อยู่ในทำเนียบดาวมิชลิน แต่ขึ้นชื่อเรื่องรสชาติต้นตำรับที่คนในพื้นที่แนะนำต่อกันมาอย่างยาวนานครับ`;
 
             const cuisineTag = tags["cuisine:th"] || tags.cuisine || tags["description:th"] || tags.description || "";
             const recommendedFood = cuisineTag
-                ? `${cuisineTag} และเมนูขึ้นชื่อประจำร้าน/ตลาด`
-                : `อาหารจานเด่นและเมนูขึ้นชื่อประจำ${name}`;
+                ? `เมนูเด็ดที่ห้ามพลาดเมื่อมาถึงที่นี่ก็คือ ${cuisineTag} รวมถึงอาหารขึ้นชื่อประจำร้านครับ`
+                : `ถ้าแวะพักปั่นตรงนี้ แนะนำให้ลองชิมเมนูขึ้นชื่อและของอร่อยประจำ${name} รับรองว่าติดใจแน่นอนครับ`;
 
-            return [
-                `ชื่อสถานที่: ${name}`,
-                `มิชลินกี่ดาว: ${michelinText}`,
-                `อาหารแนะนำคืออะไร: ${recommendedFood}`
-            ].join("\n");
+            return `ทุกท่านครับ จุดพักเติมพลังของเราตรงนี้คือ "${name}" จุดรวมความอร่อยประจำย่านนี้เลยครับ ${michelinLine} ${recommendedFood}`;
         }
 
         const wikiExtract = await fetchThaiWikiSummary(name);
@@ -1832,24 +2143,19 @@ out center tags;`;
 
         const { eraText, ageText } = extractEraAndAgeText(rawSourceText);
         const founderText = extractFounderText(rawSourceText);
-        const areaText = spotInfo.areaLocationText ? `ในย่าน${spotInfo.areaLocationText}` : "ในพื้นที่ท้องถิ่น";
+        const areaText = spotInfo.areaLocationText ? `ย่าน${spotInfo.areaLocationText}` : "พื้นที่แห่งนี้";
 
-        const builtEra = eraText || `ไม่ระบุปีสร้างแน่ชัดในฐานข้อมูล (${areaText})`;
-        const builtAge = ageText || "ไม่ระบุอายุปีแน่ชัดในฐานข้อมูล";
-        const builtFounder = founderText || `ไม่ระบุผู้สร้างแน่ชัดในฐานข้อมูล (${areaText})`;
-        const builtImportance = `เป็น${categoryLabel || "สถานที่สำคัญ"}ประจำ${areaText} ที่มีความสำคัญทางประวัติศาสตร์ วัฒนธรรม หรือวิถีชุมชน`;
-        const builtHighlight = wikiExtract
+        const originSentence = eraText
+            ? `สถานที่แห่งนี้ก่อตั้งขึ้นตั้งแต่${eraText}${ageText ? ` (${ageText})` : ""}${founderText ? ` โดย${founderText}` : ""}ครับ`
+            : founderText
+                ? `สถานที่แห่งนี้มีความเป็นมาผูกพันกับ${founderText} และอยู่คู่กับ${areaText}มาอย่างยาวนานครับ`
+                : `สถานที่แห่งนี้ถือเป็นจุดสำคัญที่อยู่คู่กับวิถีชีวิตและประวัติศาสตร์ของ${areaText}มาอย่างยาวนานครับ`;
+
+        const highlightSentence = wikiExtract
             ? wikiExtract.split(/(?<=[.!?])\s+/).slice(0, 2).join(" ")
-            : (tags["description:th"] || tags.description || `โดดเด่นด้านสถาปัตยกรรม เรื่องราวท้องถิ่น และเอกลักษณ์เฉพาะตัวของ${name}`);
+            : (tags["description:th"] || tags.description || `ความน่าสนใจของ${name}อยู่ที่บรรยากาศอันเป็นเอกลักษณ์ สถาปัตยกรรม และเรื่องราวท้องถิ่นที่สะท้อนเสน่ห์ของ${areaText}ได้อย่างชัดเจนครับ`);
 
-        return [
-            `ชื่อสถานที่: ${name}`,
-            `สร้างขึ้นเมื่อใด: ${builtEra}`,
-            `อายุเท่าไหร่: ${builtAge}`,
-            `โดยใคร: ${builtFounder}`,
-            `สำคัญอย่างไร: ${builtImportance}`,
-            `จุดเด่นของสถานที่นี้คืออะไร: ${builtHighlight}`
-        ].join("\n");
+        return `สวัสดีทุกท่านครับ ตอนนี้เรากำลังผ่านจุดที่น่าสนใจอีกแห่งหนึ่ง นั่นก็คือ "${name}" ใน${areaText}ครับ ${originSentence} ${highlightSentence} เชิญทุกท่านชมความสวยงามรอบๆ และเก็บภาพความประทับใจได้เลยครับ`;
     }
 
     async function fillFormFromOsmBox() {
@@ -2047,6 +2353,47 @@ out center tags;`;
         }, 350);
     }
 
+    function updateOsmGreenCircleOnMap(info) {
+        if (!map || !info || !info.lat || !info.lng) return;
+        const latNum = parseFloat(info.lat);
+        const lngNum = parseFloat(info.lng);
+        if (isNaN(latNum) || isNaN(lngNum)) return;
+
+        const labelText = (info.placeName || "").trim();
+        if (!labelText) return;
+
+        const greenCircleHtml = `
+            <div class="osm-green-circle-wrapper" title="${escapeAttr(labelText)}">
+                <span class="osm-green-circle-dot"></span>
+                <span class="osm-green-circle-label">${escapeHtml(labelText)}</span>
+            </div>
+        `;
+
+        const osmGreenIcon = L.divIcon({
+            className: '',
+            html: greenCircleHtml,
+            iconSize: [0, 0],
+            iconAnchor: [0, 0]
+        });
+
+        if (!osmCenterCircleMarker) {
+            osmCenterCircleMarker = L.marker([latNum, lngNum], {
+                icon: osmGreenIcon,
+                interactive: true,
+                zIndexOffset: 600
+            }).addTo(map);
+            osmCenterCircleMarker.on('dblclick', function (e) {
+                if (e && e.originalEvent) {
+                    L.DomEvent.stopPropagation(e.originalEvent);
+                }
+                fillFormFromOsmBox();
+            });
+        } else {
+            osmCenterCircleMarker.setLatLng([latNum, lngNum]);
+            osmCenterCircleMarker.setIcon(osmGreenIcon);
+        }
+    }
+
     function renderOsmBox(info, matchedSpot) {
         const placeEl = document.getElementById("centerOsmPlaceName");
         const addrEl = document.getElementById("centerOsmAddress");
@@ -2058,6 +2405,7 @@ out center tags;`;
         if (addrEl) {
             addrEl.innerText = info.displayName || "-";
         }
+        updateOsmGreenCircleOnMap(info);
     }
 
     function saveSpotFromMarkerDoubleClick(spot, markerLatLng) {
