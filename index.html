@@ -380,7 +380,7 @@
             resize: vertical;
         }
 
-        /* ช่อง Saved Spots แสดงอย่างน้อย 10 รายการโดยไม่ต้องเลื่อน */
+        /* ช่อง Saved Spots แสดงได้อย่างน้อย 10 รายการโดยไม่ต้องเลื่อน */
         .saved-spots-box {
             min-height: 360px;
             max-height: 440px;
@@ -687,12 +687,12 @@
             <!-- ฟอร์มเพิ่ม / แก้ไขข้อมูลจุดท่องเที่ยว -->
             <div class="card">
                 <h4 id="spotFormTitle" style="margin-top: 0; color: #2c3e50; font-size: 13px;">📌 Add Tour Spot (Thai)</h4>
-                <input type="text" id="spotName" placeholder="ชื่อสถานที่ (ภาษาไทย)" style="width:100%; padding:6px; margin-bottom:6px; box-sizing:border-box; border: 1px solid #ccc; border-radius: 5px; font-size: 12px;">
+                <input type="text" id="spotName" placeholder="กรอกชื่อสถานที่ท่องเที่ยว (ระบบจะเติม Lat/Lng และค้นหาประวัติอัตโนมัติ)" oninput="handleManualSpotNameInput()" onchange="handleManualSpotNameImmediate()" onkeydown="if(event.key==='Enter'){event.preventDefault();handleManualSpotNameImmediate();}" style="width:100%; padding:6px; margin-bottom:6px; box-sizing:border-box; border: 1px solid #ccc; border-radius: 5px; font-size: 12px;">
                 <div style="display: flex; gap: 6px; margin-bottom:6px;">
                     <input type="text" id="spotLat" placeholder="Latitude" style="width:50%; padding:6px; box-sizing:border-box; border: 1px solid #ccc; border-radius: 5px; font-size: 12px;">
                     <input type="text" id="spotLng" placeholder="Longitude" style="width:50%; padding:6px; box-sizing:border-box; border: 1px solid #ccc; border-radius: 5px; font-size: 12px;">
                 </div>
-                <textarea id="spotStory" class="story-textarea-10lines" placeholder="สร้างขึ้นเมื่อใด, โดยใคร, สำคัญอย่างไร, จุดเด่นของสถานที่นี้คืออะไร&#10;ตลาด/ร้านอาหาร: มิชลินกี่ดาว, อาหารแนะนำคืออะไร&#10;ชื่อทั่วไป (ถนน/ซอย/แยก): -"></textarea>
+                <textarea id="spotStory" class="story-textarea-10lines" placeholder="ประวัติสถานที่ (สรุปโดย AI ไม่เกิน 10 บรรทัด จาก visit.bangkok.go.th / ticket2attraction / tripadvisor) — ตรวจสอบก่อนกดบันทึก"></textarea>
                 
                 <div style="display: flex; gap: 6px;">
                     <button id="saveSpotBtn" onclick="addSpot()" style="background:#27ae60; color:white; border:none; padding:8px; flex: 1; border-radius:5px; font-weight:bold; cursor:pointer; font-size:13px;">➕ บันทึกจุดท่องเที่ยวนี้</button>
@@ -769,6 +769,9 @@
     };
     let osmFetchTimer = null;
     let lastOsmKey = "";
+
+    let manualNameDebounceTimer = null;
+    let lastManualLookedUpName = "";
 
     const LANG_PREFIX_MAP = {
         'th-TH': 'คำบรรยายสถานที่',
@@ -1448,23 +1451,212 @@
         }).openTooltip();
     }
 
-    // ================= แต่งข้อความประวัติให้เหมือนไกด์ทัวร์เล่าให้ลูกทัวร์ฟังอย่างน่าสนใจ =================
-    function rewriteStoryAsEngagingTourGuide(placeName, rawSummary) {
-        const cleanName = (placeName || "จุดแวะพักของเรา").trim();
-        const cleanSummary = (rawSummary || "").trim();
+    // ================= ค้นหาประวัติสถานที่ตามลำดับเว็บไซต์ที่กำหนด แล้วสรุปไม่เกิน 10 บรรทัด =================
+    const TOUR_SOURCE_URLS = [
+        "https://visit.bangkok.go.th/",
+        "https://www.ticket2attraction.com/th/blogs/bangkok-attractions/",
+        "https://th.tripadvisor.com/Attractions-g293916-Activities-Bangkok.html"
+    ];
 
-        if (!cleanSummary || cleanSummary === "-") {
-            return `สวัสดีครับทุกคน ลองมองรอบๆ ตัวเราที่ ${cleanName} ดูนะครับ จุดนี้เป็นอีกหนึ่งมุมบนเส้นทางปั่นจักรยานที่ช่วยให้เราเห็นบรรยากาศและวิถีชีวิตของย่านนี้ได้อย่างใกล้ชิด เดี๋ยวเราแวะเก็บภาพและซึมซับบรรยากาศกันสักครู่ก่อนปั่นต่อไปยังจุดถัดไปนะครับ!`;
+    function stripHtmlToLines(htmlText, queryTerm) {
+        if (!htmlText) return [];
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(htmlText, "text/html");
+        doc.querySelectorAll("script, style, noscript, svg, nav, footer, header").forEach(el => el.remove());
+
+        const rawLines = (doc.body ? doc.body.innerText : "")
+            .split(/\r?\n/)
+            .map(l => l.replace(/\s+/g, " ").trim())
+            .filter(l => l.length >= 15);
+
+        const q = (queryTerm || "").toLowerCase().trim();
+        const matched = q ? rawLines.filter(l => l.toLowerCase().includes(q)) : [];
+        return matched.length > 0 ? matched : rawLines.slice(0, 12);
+    }
+
+    async function fetchFromTargetSourceUrl(sourceUrl, placeName) {
+        // พยายามดึงเนื้อหาจาก URL เป้าหมายโดยตรงก่อน และหากติด CORS จะลองผ่าน Jina Reader / AllOrigins
+        const endpoints = [
+            sourceUrl,
+            `https://r.jina.ai/${sourceUrl}`,
+            `https://api.allorigins.win/raw?url=${encodeURIComponent(sourceUrl)}`
+        ];
+
+        for (const ep of endpoints) {
+            try {
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 5000);
+                const res = await fetch(ep, { signal: controller.signal });
+                clearTimeout(timeoutId);
+                if (!res.ok) continue;
+                const bodyText = await res.text();
+                if (!bodyText || bodyText.trim().length < 50) continue;
+
+                const q = (placeName || "").toLowerCase().trim();
+                const lines = bodyText.includes("<html") || bodyText.includes("<!DOCTYPE")
+                    ? stripHtmlToLines(bodyText, placeName)
+                    : bodyText
+                        .split(/\r?\n/)
+                        .map(l => l.replace(/^[#*\-\s]+/, "").replace(/\s+/g, " ").trim())
+                        .filter(l => l.length >= 15);
+
+                const matchedLines = q ? lines.filter(l => l.toLowerCase().includes(q)) : [];
+                if (matchedLines.length > 0) {
+                    return {
+                        found: true,
+                        sourceUrl,
+                        snippets: matchedLines.slice(0, 5)
+                    };
+                }
+            } catch (_) {
+                // ลอง endpoint ถัดไปในแหล่งเดียวกัน
+            }
+        }
+        return { found: false, sourceUrl, snippets: [] };
+    }
+
+    async function lookupPlaceHistoryFromSources(placeName) {
+        const cleanName = (placeName || "").trim();
+        for (const url of TOUR_SOURCE_URLS) {
+            const result = await fetchFromTargetSourceUrl(url, cleanName);
+            if (result.found && result.snippets.length > 0) {
+                return result;
+            }
+        }
+        return {
+            found: false,
+            sourceUrl: TOUR_SOURCE_URLS[TOUR_SOURCE_URLS.length - 1],
+            snippets: []
+        };
+    }
+
+    function summarizeToMax10GuideLines(placeName, lookupResult) {
+        const cleanName = (placeName || "จุดท่องเที่ยว").trim();
+        const hostName = (() => {
+            try { return new URL(lookupResult.sourceUrl).hostname; } catch (_) { return "แหล่งข้อมูลท่องเที่ยว"; }
+        })();
+
+        const intro = `สวัสดีครับลูกทัวร์ วันนี้พาแวะ "${cleanName}" ครับ (อ้างอิง ${hostName})`;
+        const outro = `ลองชมบรรยากาศและเก็บภาพกันก่อนปั่นต่อไปครับ`;
+
+        let bodyLines = [];
+        if (lookupResult.found && lookupResult.snippets.length > 0) {
+            bodyLines = lookupResult.snippets.slice(0, 6).map(snip => {
+                const trimmed = snip.length > 95 ? snip.slice(0, 92).trim() + "..." : snip;
+                return `• ${trimmed}`;
+            });
+        } else {
+            bodyLines = [
+                `• ตรวจค้นจาก visit.bangkok.go.th, ticket2attraction และ tripadvisor แล้วไม่พบข้อมูลตรงชื่อ "${cleanName}"`,
+                `• เป็นจุดแวะสำคัญบนเส้นทางในกรุงเทพฯ ที่น่าสนใจทั้งเรื่องราวและมุมถ่ายภาพ`,
+                `• ไกด์สามารถแก้ไขหรือเติมรายละเอียดเพิ่มเติมได้ในช่องนี้ก่อนกดบันทึก`
+            ];
         }
 
-        const formattedBullets = cleanSummary
-            .split(/\n+/)
-            .map(line => line.trim())
-            .filter(Boolean)
-            .map(line => `• ${line}`)
-            .join("\n");
+        const allLines = [intro, ...bodyLines, outro];
+        return allLines.slice(0, 10).join("\n");
+    }
 
-        return `สวัสดีครับลูกทัวร์ทุกท่าน ตอนนี้เราปั่นมาถึง "${cleanName}" กันแล้วนะครับ! ลองพักหายใจและหันมามองจุดนี้ไปพร้อมๆ กันเลยครับ:\n${formattedBullets}\nฟังแบบนี้แล้วน่าสนใจใช่ไหมครับ เดี๋ยวใครอยากถ่ายรูปหรือดูรายละเอียดตรงไหนเพิ่มเติม บอกไกด์ได้เลยครับ แล้วเราค่อยไปต่อกัน!`;
+    async function geocodePlaceNameForManualInput(placeName) {
+        const cleanName = (placeName || "").trim();
+        if (!cleanName) return null;
+
+        const searchQueries = [
+            `${cleanName} กรุงเทพ`,
+            cleanName
+        ];
+
+        for (const q of searchQueries) {
+            try {
+                const url = `https://nominatim.openstreetmap.org/search?format=jsonv2&q=${encodeURIComponent(q)}&accept-language=th,en&limit=1`;
+                const res = await fetch(url, { headers: { "Accept": "application/json" } });
+                if (!res.ok) continue;
+                const list = await res.json();
+                if (Array.isArray(list) && list.length > 0) {
+                    const hit = list[0];
+                    const lat = parseFloat(hit.lat);
+                    const lng = parseFloat(hit.lon);
+                    if (!isNaN(lat) && !isNaN(lng)) {
+                        return {
+                            lat: Number(lat.toFixed(5)),
+                            lng: Number(lng.toFixed(5)),
+                            displayName: hit.display_name || cleanName
+                        };
+                    }
+                }
+            } catch (_) {
+                // ลองคำค้นถัดไป
+            }
+        }
+        return null;
+    }
+
+    function handleManualSpotNameInput() {
+        const nameEl = document.getElementById("spotName");
+        if (!nameEl) return;
+        const val = nameEl.value.trim();
+
+        if (manualNameDebounceTimer) {
+            clearTimeout(manualNameDebounceTimer);
+        }
+
+        if (val.length < 2) return;
+
+        manualNameDebounceTimer = setTimeout(() => {
+            runManualSpotAutoFill(val);
+        }, 700);
+    }
+
+    function handleManualSpotNameImmediate() {
+        if (manualNameDebounceTimer) {
+            clearTimeout(manualNameDebounceTimer);
+            manualNameDebounceTimer = null;
+        }
+        const nameEl = document.getElementById("spotName");
+        if (!nameEl) return;
+        const val = nameEl.value.trim();
+        if (val.length >= 2) {
+            runManualSpotAutoFill(val);
+        }
+    }
+
+    async function runManualSpotAutoFill(placeName) {
+        const cleanName = (placeName || "").trim();
+        if (!cleanName || cleanName === lastManualLookedUpName) return;
+        lastManualLookedUpName = cleanName;
+
+        const latEl = document.getElementById("spotLat");
+        const lngEl = document.getElementById("spotLng");
+        const storyEl = document.getElementById("spotStory");
+
+        if (storyEl) {
+            storyEl.value = `กำลังค้นหาพิกัดและประวัติ "${cleanName}" จาก visit.bangkok.go.th...`;
+        }
+
+        const geo = await geocodePlaceNameForManualInput(cleanName);
+        if (geo) {
+            if (latEl) latEl.value = geo.lat;
+            if (lngEl) lngEl.value = geo.lng;
+
+            if (map) {
+                map.setView([geo.lat, geo.lng], 17, { animate: true });
+                updateZoomBadge();
+                updateOsmGreenCircleOnMap(geo.lat, geo.lng, cleanName);
+            }
+            latestOsmInfo = {
+                placeName: cleanName,
+                displayName: geo.displayName,
+                lat: geo.lat.toFixed(5),
+                lng: geo.lng.toFixed(5)
+            };
+            renderOsmBox(latestOsmInfo, null);
+        }
+
+        const lookupResult = await lookupPlaceHistoryFromSources(cleanName);
+        const guideSummary = summarizeToMax10GuideLines(cleanName, lookupResult);
+        if (storyEl) {
+            storyEl.value = guideSummary;
+        }
     }
 
     // ================= ฟังก์ชันจัดการแผนที่ เพิ่ม แก้ไข ลบ ลากย้ายจุด Fast Record และนำเข้า/ส่งออกจุดท่องเที่ยว =================
@@ -1524,19 +1716,13 @@
     }
 
     async function findNearestTouristOsmSpotWithin30m(lat, lng) {
-        let areaLocationText = "";
         let reverseFallbackName = "";
-        let reverseCategory = "";
-        let reverseTags = {};
-
         try {
             const revUrl = `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${encodeURIComponent(lat)}&lon=${encodeURIComponent(lng)}&accept-language=th,en`;
             const revRes = await fetch(revUrl, { headers: { "Accept": "application/json" } });
             if (revRes.ok) {
                 const revData = await revRes.json();
                 const addr = revData.address || {};
-                reverseTags = addr;
-                reverseCategory = revData.category || revData.type || "";
                 reverseFallbackName =
                     revData.name ||
                     addr.tourism ||
@@ -1547,258 +1733,16 @@
                     addr.building ||
                     addr.road ||
                     "";
-
-                const subdistrict = addr.suburb || addr.quarter || addr.village || "";
-                const district = addr.city_district || addr.district || addr.county || "";
-                const province = addr.city || addr.state || "";
-                areaLocationText = [subdistrict, district, province].filter(Boolean).join(" ");
             }
         } catch (err) {
             console.warn("Reverse geocode info:", err);
-        }
-
-        try {
-            const query = `[out:json][timeout:8];
-(
-  nwr(around:30.0,${lat},${lng})["tourism"]["name"];
-  nwr(around:30.0,${lat},${lng})["historic"]["name"];
-  nwr(around:30.0,${lat},${lng})["amenity"]["name"];
-  nwr(around:30.0,${lat},${lng})["shop"]["name"];
-  nwr(around:30.0,${lat},${lng})["leisure"]["name"];
-  nwr(around:30.0,${lat},${lng})["building"]["name"];
-);
-out center tags;`;
-            const res = await fetch("https://overpass-api.de/api/interpreter", {
-                method: "POST",
-                headers: { "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8" },
-                body: "data=" + encodeURIComponent(query)
-            });
-
-            if (res.ok) {
-                const data = await res.json();
-                const elements = Array.isArray(data.elements) ? data.elements : [];
-
-                const scored = elements
-                    .map((el) => {
-                        const tags = el.tags || {};
-                        const name = tags["name:th"] || tags.name || tags["name:en"] || "";
-                        const elLat = el.lat !== undefined ? el.lat : (el.center && el.center.lat);
-                        const elLng = el.lon !== undefined ? el.lon : (el.center && el.center.lon);
-                        if (!name || typeof elLat !== "number" || typeof elLng !== "number") return null;
-
-                        const dist = getDistanceFromLatLonInMeters(lat, lng, elLat, elLng);
-                        const isSpecificOrFood = Boolean(
-                            tags.tourism ||
-                            tags.historic ||
-                            tags.amenity === "place_of_worship" ||
-                            tags.amenity === "restaurant" ||
-                            tags.amenity === "cafe" ||
-                            tags.amenity === "marketplace" ||
-                            tags.amenity === "school" ||
-                            tags.amenity === "university" ||
-                            tags.shop === "mall" ||
-                            tags.leisure === "park"
-                        );
-                        const categoryLabel =
-                            tags.tourism || tags.historic || tags.amenity || tags.shop || tags.leisure || tags.building || "";
-
-                        return {
-                            name: name.trim(),
-                            dist,
-                            isSpecificOrFood,
-                            categoryLabel,
-                            areaLocationText,
-                            tags
-                        };
-                    })
-                    .filter((item) => item !== null && item.dist <= 30.0);
-
-                scored.sort((a, b) => {
-                    if (a.isSpecificOrFood !== b.isSpecificOrFood) {
-                        return a.isSpecificOrFood ? -1 : 1;
-                    }
-                    return a.dist - b.dist;
-                });
-
-                if (scored.length > 0) {
-                    return scored[0];
-                }
-            }
-        } catch (err) {
-            console.warn("Overpass query fallback:", err);
         }
 
         const resolvedName = reverseFallbackName
             ? reverseFallbackName.trim()
             : `จุดพิกัด ${lat.toFixed(5)}, ${lng.toFixed(5)}`;
 
-        return {
-            name: resolvedName,
-            dist: 0,
-            isSpecificOrFood: false,
-            categoryLabel: reverseCategory,
-            areaLocationText,
-            tags: reverseTags
-        };
-    }
-
-    function extractEraAndAgeText(text) {
-        const currentBuddhistYear = 2569;
-        const currentGregorianYear = 2026;
-        let eraText = "";
-        let ageText = "";
-
-        if (!text) {
-            return { eraText, ageText };
-        }
-
-        const beMatch = text.match(/พ\.?\s*ศ\.?\s*(\d{4})/);
-        const adMatch = text.match(/ค\.?\s*ศ\.?\s*(\d{4})/);
-
-        if (beMatch) {
-            const beYear = parseInt(beMatch[1], 10);
-            if (!isNaN(beYear) && beYear > 1800 && beYear <= currentBuddhistYear) {
-                eraText = `พ.ศ. ${beYear}`;
-                ageText = `ประมาณ ${currentBuddhistYear - beYear} ปี`;
-            }
-        } else if (adMatch) {
-            const adYear = parseInt(adMatch[1], 10);
-            if (!isNaN(adYear) && adYear > 1000 && adYear <= currentGregorianYear) {
-                eraText = `ค.ศ. ${adYear} (พ.ศ. ${adYear + 543})`;
-                ageText = `ประมาณ ${currentGregorianYear - adYear} ปี`;
-            }
-        }
-
-        if (!eraText) {
-            const reignMatch = text.match(/(รัชสมัย[^ฯ\n,.]{2,45}|สมัย[^ฯ\n,.]{2,35})/);
-            if (reignMatch) {
-                eraText = reignMatch[1].trim();
-            }
-        }
-
-        return { eraText, ageText };
-    }
-
-    function extractFounderText(text) {
-        if (!text) return "";
-        const founderMatch = text.match(/(สร้างขึ้นโดย[^ฯ\n,.]{2,50}|สร้างโดย[^ฯ\n,.]{2,50}|สถาปนาโดย[^ฯ\n,.]{2,50}|พระบาทสมเด็จพระ[^ฯ\n,.]{3,55}|สมเด็จพระเจ้าบรมวงศ์เธอ[^ฯ\n,.]{3,55}|สมเด็จพระ[^ฯ\n,.]{3,55})/);
-        return founderMatch ? founderMatch[1].trim() : "";
-    }
-
-    async function fetchThaiWikiSummary(title) {
-        if (!title) return "";
-        try {
-            const cleanTitle = title.replace(/\(.*?\)/g, "").trim();
-            const url = `https://th.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(cleanTitle)}`;
-            const res = await fetch(url, { headers: { "Accept": "application/json" } });
-            if (!res.ok) return "";
-            const data = await res.json();
-            if (data && typeof data.extract === "string" && data.extract.trim()) {
-                return data.extract.trim();
-            }
-        } catch (err) {
-            console.warn("Wiki lookup skipped:", err);
-        }
-        return "";
-    }
-
-    function isGenericNonTouristName(name, tags, categoryLabel) {
-        const trimmed = (name || "").trim();
-        if (!trimmed) return true;
-
-        const isSpecificCategory =
-            /สะพาน|ย่าน|ชุมชน|เจดีย์|วัด|อนุสาวรีย์|อนุเสาวรีย์|สนามหลวง|พระราชวัง|วัง|รูปปั้น|โรงเรียน|มหาวิทยาลัย|วิทยาลัย|พิพิธภัณฑ์|ป้อม|ศาล|ตลาด|ร้านอาหาร|คาเฟ่|ก๋วยเตี๋ยว|ข้าวมันไก่|ผัดไทย|ส้มตำ/.test(trimmed) ||
-            Boolean(tags && (tags.tourism || tags.historic || tags.amenity === "place_of_worship" || tags.amenity === "restaurant" || tags.amenity === "cafe" || tags.amenity === "marketplace" || tags.amenity === "school" || tags.amenity === "university"));
-
-        if (isSpecificCategory) return false;
-
-        const isGenericPattern =
-            /^(ถนน|ถ\.|ซอย|ซ\.|แยก|สี่แยก|สามแยก|ห้าแยก|ทางหลวง|ทางด่วน|วงเวียน|ตรอก|อาคาร|ตึก|สำนักงาน|ที่จอดรถ|จุดพิกัด)\b/.test(trimmed) ||
-            ["highway", "junction", "turning_circle", "parking"].includes((categoryLabel || "").toLowerCase()) ||
-            (tags && (tags.highway || tags.junction));
-
-        return isGenericPattern;
-    }
-
-    function isMarketOrRestaurant(name, tags, categoryLabel) {
-        const trimmed = (name || "").trim();
-        return (
-            /ตลาด|ร้านอาหาร|ร้าน|ภัตตาคาร|คาเฟ่|ก๋วยเตี๋ยว|ข้าวมันไก่|ข้าวขาหมู|ผัดไทย|ส้มตำ|บะหมี่|อาหาร|อร่อย|เด็ด/.test(trimmed) ||
-            ["restaurant", "cafe", "food_court", "marketplace"].includes((categoryLabel || "").toLowerCase()) ||
-            Boolean(tags && (tags.amenity === "restaurant" || tags.amenity === "cafe" || tags.amenity === "marketplace"))
-        );
-    }
-
-    async function buildConciseTouristAiSummary(spotInfo) {
-        const name = (spotInfo.name || "").trim();
-        const tags = spotInfo.tags || {};
-        const categoryLabel = spotInfo.categoryLabel || "";
-
-        if (isGenericNonTouristName(name, tags, categoryLabel)) {
-            return rewriteStoryAsEngagingTourGuide(name, "-");
-        }
-
-        if (/จุฑาธุช/.test(name)) {
-            const rawFact = [
-                `ชื่อสถานที่: ${name}`,
-                `สร้างขึ้นเมื่อใด: พ.ศ. 2466 (รัชสมัยพระบาทสมเด็จพระมงกุฎเกล้าเจ้าอยู่หัว รัชกาลที่ 6)`,
-                `อายุเท่าไหร่: ประมาณ 103 ปี`,
-                `โดยใคร: อนุสรณ์รำลึกถึงสมเด็จพระเจ้าบรมวงศ์เธอ เจ้าฟ้าจุฑาธุชธราดิลก กรมขุนเพ็ชรบูรณ์อินทราไชย พระราชโอรสในพระบาทสมเด็จพระจุลจอมเกล้าเจ้าอยู่หัว และสมเด็จพระศรีพัชรินทราบรมราชินีนาถ`,
-                `สำคัญอย่างไร: ทรงมีพระดำริก่อตั้งโรงเรียนเพาะช่าง (วิทยาลัยเพาะช่าง มทร.รัตนโกสินทร์) และทรงเป็นพระอาจารย์ในจุฬาลงกรณ์มหาวิทยาลัยและองคมนตรี`,
-                `จุดเด่นของสถานที่นี้คืออะไร: เป็นอนุสรณ์สถานสำคัญที่สะท้อนพระเกียรติคุณและบทบาทด้านศิลปะและการศึกษาไทย`
-            ].join("\n");
-            return rewriteStoryAsEngagingTourGuide(name, rawFact);
-        }
-
-        if (isMarketOrRestaurant(name, tags, categoryLabel)) {
-            const michelinTag = tags["michelin"] || tags["guide:michelin"] || "";
-            const michelinText = michelinTag
-                ? `มิชลิน: ${michelinTag}`
-                : "มิชลิน: ไม่อยู่ในทำเนียบดาวมิชลินที่ระบุในข้อมูล (ตรวจสอบรายการล่าสุดได้จากคู่มือมิชลินไกด์)";
-
-            const cuisineTag = tags["cuisine:th"] || tags.cuisine || tags["description:th"] || tags.description || "";
-            const recommendedFood = cuisineTag
-                ? `${cuisineTag} และเมนูขึ้นชื่อประจำร้าน/ตลาด`
-                : `อาหารจานเด่นและเมนูขึ้นชื่อประจำ${name}`;
-
-            const rawFoodFact = [
-                `ชื่อสถานที่: ${name}`,
-                `มิชลินกี่ดาว: ${michelinText}`,
-                `อาหารแนะนำคืออะไร: ${recommendedFood}`
-            ].join("\n");
-            return rewriteStoryAsEngagingTourGuide(name, rawFoodFact);
-        }
-
-        const wikiExtract = await fetchThaiWikiSummary(name);
-        const rawSourceText = [
-            tags["description:th"],
-            tags.description,
-            tags.start_date ? `สร้างปี ${tags.start_date}` : "",
-            wikiExtract
-        ].filter(Boolean).join(" ");
-
-        const { eraText, ageText } = extractEraAndAgeText(rawSourceText);
-        const founderText = extractFounderText(rawSourceText);
-        const areaText = spotInfo.areaLocationText ? `ในย่าน${spotInfo.areaLocationText}` : "ในพื้นที่ท้องถิ่น";
-
-        const builtEra = eraText || `ไม่ระบุปีสร้างแน่ชัดในฐานข้อมูล (${areaText})`;
-        const builtAge = ageText || "ไม่ระบุอายุปีแน่ชัดในฐานข้อมูล";
-        const builtFounder = founderText || `ไม่ระบุผู้สร้างแน่ชัดในฐานข้อมูล (${areaText})`;
-        const builtImportance = `เป็น${categoryLabel || "สถานที่สำคัญ"}ประจำ${areaText} ที่มีความสำคัญทางประวัติศาสตร์ วัฒนธรรม หรือวิถีชุมชน`;
-        const builtHighlight = wikiExtract
-            ? wikiExtract.split(/(?<=[.!?])\s+/).slice(0, 2).join(" ")
-            : (tags["description:th"] || tags.description || `โดดเด่นด้านสถาปัตยกรรม เรื่องราวท้องถิ่น และเอกลักษณ์เฉพาะตัวของ${name}`);
-
-        const rawPlaceFact = [
-            `ชื่อสถานที่: ${name}`,
-            `สร้างขึ้นเมื่อใด: ${builtEra}`,
-            `อายุเท่าไหร่: ${builtAge}`,
-            `โดยใคร: ${builtFounder}`,
-            `สำคัญอย่างไร: ${builtImportance}`,
-            `จุดเด่นของสถานที่นี้คืออะไร: ${builtHighlight}`
-        ].join("\n");
-
-        return rewriteStoryAsEngagingTourGuide(name, rawPlaceFact);
+        return { name: resolvedName };
     }
 
     async function fillFormFromOsmBox() {
@@ -1824,13 +1768,15 @@ out center tags;`;
             : "กำลังค้นหาชื่อสถานที่...";
 
         if (nameInputEl) nameInputEl.value = initialName;
-        if (storyInputEl) storyInputEl.value = "กำลังค้นหาข้อมูลและแต่งเรื่องเล่าสไตล์ไกด์ทัวร์...";
+        if (storyInputEl) storyInputEl.value = "กำลังค้นหาประวัติและสรุปไม่เกิน 10 บรรทัด...";
 
         const osmSpot = await findNearestTouristOsmSpotWithin30m(targetLat, targetLng);
         if (nameInputEl) nameInputEl.value = osmSpot.name;
+        lastManualLookedUpName = osmSpot.name;
         updateOsmGreenCircleOnMap(targetLat, targetLng, osmSpot.name);
 
-        const storyText = await buildConciseTouristAiSummary(osmSpot);
+        const lookupResult = await lookupPlaceHistoryFromSources(osmSpot.name);
+        const storyText = summarizeToMax10GuideLines(osmSpot.name, lookupResult);
         if (storyInputEl) storyInputEl.value = storyText;
     }
 
@@ -1847,12 +1793,14 @@ out center tags;`;
             const lngNum = Number(coords.lng.toFixed(5));
 
             const osmSpot = await findNearestTouristOsmSpotWithin30m(latNum, lngNum);
-            const storyText = await buildConciseTouristAiSummary(osmSpot);
+            const lookupResult = await lookupPlaceHistoryFromSources(osmSpot.name);
+            const storyText = summarizeToMax10GuideLines(osmSpot.name, lookupResult);
 
             document.getElementById("spotName").value = osmSpot.name;
             document.getElementById("spotLat").value = latNum;
             document.getElementById("spotLng").value = lngNum;
             document.getElementById("spotStory").value = storyText;
+            lastManualLookedUpName = osmSpot.name;
 
             const newSpot = {
                 id: Date.now(),
@@ -2021,7 +1969,7 @@ out center tags;`;
             (latestOsmInfo && latestOsmInfo.placeName && !latestOsmInfo.placeName.startsWith("พิกัด "))
                 ? (spot.name || latestOsmInfo.placeName)
                 : spot.name;
-        const storyText = spot.story || rewriteStoryAsEngagingTourGuide(resolvedName, "");
+        const storyText = spot.story || resolvedName;
 
         masterSpots = masterSpots.map(s =>
             s.id === spot.id
@@ -2180,7 +2128,7 @@ out center tags;`;
         const storyInput = document.getElementById("spotStory").value.trim();
         const spotNumber = masterSpots.length + 1;
         const autoName = nameInput || `จุดที่ ${spotNumber} (${latestMasterCoords.lat}, ${latestMasterCoords.lng})`;
-        const autoStory = storyInput || rewriteStoryAsEngagingTourGuide(autoName, "");
+        const autoStory = storyInput || "-";
 
         if (editingSpotId !== null) {
             masterSpots = masterSpots.map(spot =>
@@ -2204,6 +2152,7 @@ out center tags;`;
             document.getElementById("spotLat").value = "";
             document.getElementById("spotLng").value = "";
             document.getElementById("spotStory").value = "";
+            lastManualLookedUpName = "";
         }
 
         saveSpotsToStorage();
@@ -2386,7 +2335,7 @@ out center tags;`;
         const story = document.getElementById("spotStory").value.trim();
 
         if (!name || isNaN(lat) || isNaN(lng) || !story) {
-            alert("กรุณากรอกข้อมูลให้ครบถ้วน (ชื่อ, พิกัด Lat/Lng หรือดับเบิลคลิกกรอบ OpenStreetMap ด้านบน, และบทบรรยาย)");
+            alert("กรุณากรอกข้อมูลให้ครบถ้วน (ชื่อ, พิกัด Lat/Lng และบทบรรยายที่ตรวจสอบแล้ว)");
             return;
         }
 
@@ -2402,6 +2351,7 @@ out center tags;`;
             document.getElementById("spotLat").value = "";
             document.getElementById("spotLng").value = "";
             document.getElementById("spotStory").value = "";
+            lastManualLookedUpName = "";
         }
 
         saveSpotsToStorage();
@@ -2422,6 +2372,7 @@ out center tags;`;
         document.getElementById("spotLat").value = target.lat;
         document.getElementById("spotLng").value = target.lng;
         document.getElementById("spotStory").value = target.story;
+        lastManualLookedUpName = target.name;
 
         document.getElementById("spotFormTitle").innerText = "✏️ Edit Tour Spot (Thai)";
         const saveBtn = document.getElementById("saveSpotBtn");
@@ -2441,6 +2392,7 @@ out center tags;`;
         editingSpotId = null;
         freePanMode = true;
         syncFreePanButtonUI();
+        lastManualLookedUpName = "";
 
         document.getElementById("spotName").value = "";
         document.getElementById("spotLat").value = "";
