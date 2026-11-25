@@ -1,0 +1,2803 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bicycle GPS Tour Guide & Master Manager</title>
+    <!-- โหลดไลบรารี CSS ของแผนที่ Leaflet -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <!-- โหลดไลบรารี QRCode.js สำหรับสร้าง QR Code บนหน้าจอ -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: #2c3e50;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+        }
+
+        /* กรอบจำลองโทรศัพท์มือถือ */
+        .phone-frame {
+            width: 380px;
+            height: 780px;
+            background: #fff;
+            border-radius: 40px;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4);
+            border: 10px solid #1a252f;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            position: relative;
+        }
+
+        .notch {
+            width: 150px;
+            height: 25px;
+            background: #1a252f;
+            border-bottom-left-radius: 12px;
+            border-bottom-right-radius: 12px;
+            position: absolute;
+            top: 0;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 10;
+        }
+
+        .screen-content {
+            padding: 35px 15px 15px 15px;
+            overflow-y: auto;
+            flex: 1;
+            background: #f8f9fa;
+            text-align: center;
+            display: flex;
+            flex-direction: column;
+        }
+
+        h2 {
+            color: #2c3e50;
+            font-size: 19px;
+            margin-top: 5px;
+        }
+
+        .lang-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 8px;
+            margin-top: 15px;
+        }
+
+        .lang-btn {
+            background: #27ae60;
+            color: white;
+            border: none;
+            padding: 10px;
+            font-size: 13px;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: 0.2s;
+            text-align: center;
+            font-weight: bold;
+        }
+
+        .lang-btn:hover {
+            background: #219653;
+        }
+
+        .mode-select-btn {
+            background: #8e44ad;
+            color: white;
+            border: none;
+            padding: 12px;
+            font-size: 14px;
+            border-radius: 8px;
+            cursor: pointer;
+            width: 100%;
+            margin-top: 10px;
+            font-weight: bold;
+        }
+
+        .mode-select-btn:hover {
+            background: #732d91;
+        }
+
+        /* ซ่อนหน้าจอทั้งหมดโดยค่าเริ่มต้น */
+        #tour-screen,
+        #master-menu-screen,
+        #master-spots-screen,
+        #master-all-spots-screen,
+        #master-broadcast-screen,
+        #lang-screen {
+            display: none;
+        }
+
+        #mode-screen {
+            display: block;
+        }
+
+        /* จัดหน้าจอ Listener ให้คำบรรยายสี่เหลี่ยมจัตุรัสและ Map อยู่ด้านล่าง */
+        #tour-screen.active-tour {
+            display: flex;
+            flex-direction: column;
+            flex: 1;
+            min-height: 100%;
+            text-align: left;
+        }
+
+        .tour-top-section {
+            flex: 1;
+        }
+
+        .card {
+            background: #ffffff;
+            padding: 12px;
+            border-radius: 12px;
+            margin-top: 10px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+            text-align: left;
+        }
+
+        button.action-btn {
+            background: #2980b9;
+            color: white;
+            border: none;
+            padding: 12px;
+            font-size: 15px;
+            border-radius: 8px;
+            cursor: pointer;
+            width: 100%;
+            margin-top: 8px;
+            font-weight: bold;
+        }
+
+        button.action-btn:disabled {
+            background: #95a5a6;
+            cursor: not-allowed;
+        }
+
+        /* ปุ่มย้อนกลับ */
+        .back-btn {
+            background: #7f8c8d;
+            color: white;
+            border: none;
+            padding: 8px 14px;
+            font-size: 12px;
+            border-radius: 6px;
+            cursor: pointer;
+            margin-bottom: 8px;
+            font-weight: bold;
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+        }
+
+        .back-btn:hover {
+            background: #606f7b;
+        }
+
+        /* แถวค้นหาบน Map ในหน้าบันทึก */
+        .map-search-row {
+            display: flex;
+            gap: 5px;
+            margin-bottom: 6px;
+        }
+
+        .map-search-input {
+            flex: 1;
+            min-width: 0;
+            padding: 6px 8px;
+            border: 1px solid #3498db;
+            border-radius: 6px;
+            font-size: 11px;
+            font-family: inherit;
+            box-sizing: border-box;
+        }
+
+        .map-search-btn {
+            background: #2980b9;
+            color: #ffffff;
+            border: none;
+            padding: 6px 10px;
+            border-radius: 6px;
+            font-size: 11px;
+            font-weight: 800;
+            cursor: pointer;
+            white-space: nowrap;
+        }
+
+        .map-search-btn:hover {
+            background: #1f618d;
+        }
+
+        /* แถวบนสุดของหน้าบันทึก: ปุ่ม Fast Record วงกลมขนาด 1 นิ้ว (96px) สีแดงอยู่บนสุดซ้ายมือ */
+        .spots-top-bar {
+            display: flex;
+            align-items: flex-start;
+            gap: 10px;
+            margin-bottom: 6px;
+        }
+
+        .fast-record-circle-btn {
+            width: 1in;
+            height: 1in;
+            min-width: 96px;
+            min-height: 96px;
+            border-radius: 50%;
+            border: 3px solid #ffffff;
+            background: #e74c3c;
+            color: #ffffff;
+            font-size: 12px;
+            font-weight: 800;
+            line-height: 1.25;
+            cursor: pointer;
+            display: inline-flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            box-shadow: 0 4px 12px rgba(231, 76, 60, 0.45);
+            transition: transform 0.15s, background 0.2s, box-shadow 0.2s;
+            flex-shrink: 0;
+            padding: 6px;
+            box-sizing: border-box;
+        }
+
+        .fast-record-circle-btn:hover {
+            background: #c0392b;
+        }
+
+        .fast-record-circle-btn.recorded {
+            background: #e67e22;
+            box-shadow: 0 4px 12px rgba(230, 126, 34, 0.55);
+        }
+
+        .fast-record-circle-btn.recorded:hover {
+            background: #d35400;
+        }
+
+        .fast-record-circle-btn:active {
+            transform: scale(0.95);
+        }
+
+        .fast-record-circle-btn:disabled {
+            background: #95a5a6;
+            cursor: not-allowed;
+        }
+
+        .spots-top-right-col {
+            flex: 1;
+            min-width: 0;
+        }
+
+        /* หัวข้อ Route & Story Manager พร้อมปุ่มเปิดปิด GPS วงกลมขนาดเล็กด้านข้าง */
+        .spots-header-row {
+            display: flex;
+            align-items: center;
+            justify-content: flex-start;
+            gap: 6px;
+            margin-top: 2px;
+            margin-bottom: 6px;
+            flex-wrap: wrap;
+        }
+
+        .spots-header-row h2 {
+            margin: 0;
+            font-size: 16px;
+            text-align: left;
+        }
+
+        .gps-circle-btn {
+            width: 28px;
+            height: 28px;
+            border-radius: 50%;
+            border: 2px solid #ffffff;
+            background: #27ae60;
+            color: #ffffff;
+            font-size: 9px;
+            font-weight: 800;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
+            transition: background 0.2s, transform 0.15s;
+            padding: 0;
+            flex-shrink: 0;
+        }
+
+        .gps-circle-btn:active {
+            transform: scale(0.94);
+        }
+
+        .gps-circle-btn.off {
+            background: #95a5a6;
+        }
+
+        /* กรอบแสดง Lat/Lng แบบ Real-time ที่กดเพื่อดึงพิกัดและบันทึกอัตโนมัติ */
+        .live-coord-chip {
+            background: #eef6ff;
+            border: 1px solid #3498db;
+            color: #1a5276;
+            border-radius: 6px;
+            padding: 4px 8px;
+            font-size: 10px;
+            font-weight: 700;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            transition: background 0.15s;
+        }
+
+        .live-coord-chip:hover {
+            background: #d6eaf8;
+        }
+
+        /* แถบปุ่มซูมแผนที่ รีเซ็ต z17 โหมดเลื่อนอิสระ และตำแหน่งปัจจุบันสำหรับมือถือ */
+        .map-quick-controls {
+            display: flex;
+            align-items: center;
+            gap: 3px;
+            flex-wrap: wrap;
+        }
+
+        .map-zoom-btn {
+            width: 24px;
+            height: 22px;
+            border: none;
+            border-radius: 4px;
+            background: #2c3e50;
+            color: #ffffff;
+            font-size: 12px;
+            font-weight: 800;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            line-height: 1;
+            padding: 0;
+        }
+
+        .map-zoom-btn:active {
+            transform: scale(0.94);
+            background: #1a252f;
+        }
+
+        .map-reset-zoom-btn {
+            height: 22px;
+            border: none;
+            border-radius: 4px;
+            background: #34495e;
+            color: #f1c40f;
+            font-size: 9px;
+            font-weight: 800;
+            cursor: pointer;
+            padding: 0 5px;
+        }
+
+        .map-free-pan-btn {
+            height: 22px;
+            border: none;
+            border-radius: 4px;
+            background: #e67e22;
+            color: #ffffff;
+            font-size: 9px;
+            font-weight: 800;
+            cursor: pointer;
+            padding: 0 6px;
+        }
+
+        .map-free-pan-btn.locked {
+            background: #8e44ad;
+        }
+
+        .map-zoom-badge {
+            font-size: 9px;
+            font-weight: 700;
+            color: #555;
+            min-width: 24px;
+            text-align: center;
+        }
+
+        /* กรอบสี่เหลี่ยมด้านนอกเหนือแผนที่ แสดงชื่อสถานที่จาก OpenStreetMap และ Double-click เพื่อดึงข้อมูล */
+        .osm-center-box {
+            border: 2px solid #27ae60;
+            background: #f2fbf5;
+            border-radius: 8px;
+            padding: 7px 9px;
+            margin-bottom: 6px;
+            text-align: left;
+            box-sizing: border-box;
+            cursor: pointer;
+            user-select: none;
+            transition: background 0.15s, border-color 0.15s;
+        }
+
+        .osm-center-box:hover {
+            background: #e6f7ec;
+            border-color: #1e8449;
+        }
+
+        .osm-center-title {
+            font-size: 11px;
+            font-weight: 800;
+            color: #1e8449;
+            margin-bottom: 2px;
+        }
+
+        .osm-center-detail {
+            font-size: 10px;
+            color: #2c3e50;
+            line-height: 1.35;
+            word-break: break-word;
+        }
+
+        /* กล่อง prompt ยืนยันการย้ายจุดบนแผนที่แบบ Yes / No */
+        .move-confirm-box {
+            display: none;
+            margin-top: 8px;
+            padding: 10px;
+            border-radius: 8px;
+            background: #fef9e7;
+            border: 2px solid #f39c12;
+            box-shadow: 0 3px 10px rgba(0, 0, 0, 0.12);
+            text-align: left;
+        }
+
+        .move-confirm-title {
+            font-size: 12px;
+            font-weight: 800;
+            color: #2c3e50;
+            margin-bottom: 4px;
+        }
+
+        .move-confirm-coords {
+            font-size: 11px;
+            color: #555;
+            margin-bottom: 8px;
+        }
+
+        .move-confirm-actions {
+            display: flex;
+            gap: 8px;
+        }
+
+        .btn-confirm-yes {
+            flex: 1;
+            background: #27ae60;
+            color: #ffffff;
+            border: none;
+            padding: 7px 10px;
+            border-radius: 6px;
+            font-size: 12px;
+            font-weight: 800;
+            cursor: pointer;
+        }
+
+        .btn-confirm-no {
+            flex: 1;
+            background: #e74c3c;
+            color: #ffffff;
+            border: none;
+            padding: 7px 10px;
+            border-radius: 6px;
+            font-size: 12px;
+            font-weight: 800;
+            cursor: pointer;
+        }
+
+        /* มาร์คเกอร์สีส้ม และสีเขียวเมื่ออยู่ตรงกลางแผนที่ */
+        .orange-marker-pin {
+            width: 22px;
+            height: 22px;
+            background: #e67e22;
+            border: 3px solid #ffffff;
+            border-radius: 50%;
+            box-shadow: 0 2px 8px rgba(230, 126, 34, 0.85);
+        }
+
+        .green-marker-pin {
+            width: 24px;
+            height: 24px;
+            background: #27ae60;
+            border: 3px solid #ffffff;
+            border-radius: 50%;
+            box-shadow: 0 2px 10px rgba(39, 174, 96, 0.95);
+        }
+
+        /* ช่องประวัติความเป็นมา ขยายให้เห็นอย่างน้อย 10 บรรทัดโดยไม่ต้องเลื่อน */
+        .story-textarea-10lines {
+            width: 100%;
+            height: 195px;
+            min-height: 195px;
+            padding: 7px;
+            margin-bottom: 6px;
+            box-sizing: border-box;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+            font-family: inherit;
+            font-size: 12px;
+            line-height: 1.45;
+            resize: vertical;
+        }
+
+        /* ช่อง Saved Spots แสดงอย่างน้อย 10 รายการโดยไม่ต้องเลื่อน */
+        .saved-spots-box {
+            min-height: 360px;
+            max-height: 440px;
+            overflow-y: auto;
+            font-size: 11px;
+            margin-bottom: 6px;
+            border: 1px solid #ddd;
+            padding: 5px;
+            border-radius: 5px;
+            background: #fafafa;
+        }
+
+        /* กรอบคำบรรยายตัวหนังสือใหญ่เลื่อนเต็มหน้าจอ วางด้านบนใต้ปุ่ม Back */
+        .subtitle-marquee-box {
+            width: 100%;
+            box-sizing: border-box;
+            background: #1a252f;
+            color: #f1c40f;
+            border: 3px solid #e67e22;
+            border-radius: 12px;
+            padding: 14px 0;
+            margin: 4px 0 8px 0;
+            overflow: hidden;
+            white-space: nowrap;
+            position: relative;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+            display: block;
+        }
+
+        .subtitle-marquee-label {
+            font-size: 11px;
+            color: #ffffff;
+            background: #e67e22;
+            padding: 2px 10px;
+            border-radius: 0 0 8px 0;
+            position: absolute;
+            top: 0;
+            left: 0;
+            z-index: 2;
+            font-weight: bold;
+        }
+
+        .subtitle-marquee-track {
+            display: inline-block;
+            padding-left: 100%;
+            padding-top: 10px;
+            font-size: 28px;
+            font-weight: 800;
+            letter-spacing: 0.5px;
+            animation: marqueeScroll 18s linear infinite;
+        }
+
+        @keyframes marqueeScroll {
+            0% { transform: translateX(0); }
+            100% { transform: translateX(-100%); }
+        }
+
+        /* กล่องคำบรรยายตามภาษาที่เลือก ขยายเป็นสี่เหลี่ยมจัตุรัส */
+        .lang-caption-square-box {
+            width: 100%;
+            aspect-ratio: 1 / 1;
+            box-sizing: border-box;
+            background: #fff8eb;
+            border: 2px solid #e67e22;
+            border-radius: 12px;
+            padding: 12px 14px;
+            margin-top: 8px;
+            font-size: 14px;
+            color: #2c3e50;
+            line-height: 1.55;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* แผนที่หน้าลูกทัวร์ด้านล่างต่อจากคำบรรยาย */
+        .listener-map-box {
+            width: 100%;
+            height: 220px;
+            border-radius: 10px;
+            border: 1px solid #ccc;
+            margin-top: 6px;
+            box-sizing: border-box;
+        }
+
+        .status-box {
+            font-size: 13px;
+            line-height: 1.4;
+            color: #444;
+        }
+
+        /* ป้ายแจ้งเตือนมุมบนซ้ายตามภาษาที่เลือก */
+        .badge-native {
+            display: inline-block;
+            background: #e67e22;
+            color: white;
+            padding: 4px 10px;
+            border-radius: 6px;
+            font-size: 12px;
+            margin-bottom: 6px;
+            font-weight: bold;
+        }
+
+        /* ปุ่มไมค์สำหรับ Broadcast */
+        .mic-btn {
+            background: #e74c3c;
+            color: white;
+            border: none;
+            padding: 15px;
+            font-size: 16px;
+            border-radius: 50px;
+            cursor: pointer;
+            width: 100%;
+            margin-top: 10px;
+            font-weight: bold;
+            box-shadow: 0 4px 10px rgba(231, 76, 60, 0.4);
+            transition: 0.2s;
+        }
+
+        .mic-btn.recording {
+            background: #c0392b;
+            animation: pulse 1.5s infinite;
+        }
+
+        @keyframes pulse {
+            0% { transform: scale(1); box-shadow: 0 0 0 0 rgba(231, 76, 60, 0.7); }
+            70% { transform: scale(1.03); box-shadow: 0 0 0 10px rgba(231, 76, 60, 0); }
+            100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(231, 76, 60, 0); }
+        }
+
+        /* สไตล์สำหรับกล่องแสดง QR Code ในหน้าเมนู Master ตรงกลางล่าง */
+        .master-qr-container {
+            background: #ffffff;
+            padding: 10px;
+            border-radius: 12px;
+            margin-top: 15px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        #qrcode {
+            margin: 5px 0;
+            display: flex;
+            justify-content: center;
+        }
+
+        /* สไตล์การ์ดแต่ละรายการในหน้าแสดงรายการทั้งหมด */
+        .spot-item-card {
+            background: #ffffff;
+            border: 1px solid #dce1e7;
+            border-radius: 10px;
+            padding: 10px;
+            margin-bottom: 10px;
+            text-align: left;
+            box-shadow: 0 1px 4px rgba(0, 0, 0, 0.04);
+        }
+
+        .spot-item-card.editing {
+            border-color: #f39c12;
+            background: #fffdf7;
+        }
+
+        .spot-field-input {
+            width: 100%;
+            padding: 5px 7px;
+            margin-bottom: 5px;
+            box-sizing: border-box;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+            font-size: 11px;
+            font-family: inherit;
+        }
+
+        .spot-field-input:disabled {
+            background: #f2f4f6;
+            color: #333;
+            border-color: #e5e7eb;
+        }
+
+        .spot-action-row {
+            display: flex;
+            justify-content: flex-end;
+            gap: 6px;
+            margin-top: 6px;
+        }
+
+        .btn-edit-spot {
+            background: #f39c12;
+            color: white;
+            border: none;
+            padding: 5px 10px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 11px;
+            font-weight: bold;
+        }
+
+        .btn-save-spot {
+            background: #27ae60;
+            color: white;
+            border: none;
+            padding: 5px 10px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 11px;
+            font-weight: bold;
+        }
+
+        .btn-del-spot {
+            background: #e74c3c;
+            color: white;
+            border: none;
+            padding: 5px 10px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 11px;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+
+<div class="phone-frame">
+    <div class="notch"></div>
+    <div class="screen-content">
+
+        <!-- หน้าจอแรก: เลือกโหมด (ลูกทัวร์ หรือ ไกด์ Master) -->
+        <div id="mode-screen">
+            <h2>🚴‍♂️ Bicycle Smart Tour System</h2>
+            <p style="font-size: 12px; color: #666; margin-bottom: 20px;">Please select your role</p>
+
+            <button class="mode-select-btn" onclick="showLangScreen()" style="background: #27ae60;">🎧 Tour Participant (Listener)</button>
+            <button class="mode-select-btn" onclick="showMasterMenuScreen()">👑 Tour Guide (Master Device)</button>
+        </div>
+
+        <!-- หน้าจอเลือกภาษาสำหรับลูกทัวร์ (10 ภาษา) -->
+        <div id="lang-screen">
+            <button class="back-btn" onclick="goBackToMode()" style="float: left;">⬅ Back to Home</button>
+            <div style="clear: both;"></div>
+            <h2>🌍 Select Language</h2>
+
+            <div class="lang-grid">
+                <button class="lang-btn" onclick="setLanguage('th-TH', '🇹🇭 ภาษาไทย', 'กำลังแปลภาษาเป็นภาษาไทย')">🇹🇭 ไทย</button>
+                <button class="lang-btn" onclick="setLanguage('en-US', '🇬🇧 English', 'Translating to English')">🇬🇧 English</button>
+                <button class="lang-btn" onclick="setLanguage('zh-CN', '🇨🇳 中文 (Mandarin)', '正在翻译成中文')">🇨🇳 中文</button>
+                <button class="lang-btn" onclick="setLanguage('zh-HK', '🇭🇰 粵語 (Cantonese)', '正在翻譯成粵語')">🇭🇰 粵語</button>
+                <button class="lang-btn" onclick="setLanguage('ja-JP', '🇯🇵 日本語', '日本語に翻訳しています')">🇯🇵 日本語</button>
+                <button class="lang-btn" onclick="setLanguage('fr-FR', '🇫🇷 Français', 'Traduction en français')">🇫🇷 Français</button>
+                <button class="lang-btn" onclick="setLanguage('de-DE', '🇩🇪 Deutsch', 'Übersetzung auf Deutsch')">🇩🇪 Deutsch</button>
+                <button class="lang-btn" onclick="setLanguage('es-ES', '🇪🇸 Español', 'Traduciendo al español')">🇪🇸 Español</button>
+                <button class="lang-btn" onclick="setLanguage('vi-VN', '🇻🇳 Tiếng Việt', 'Đang dịch sang tiếng Việt')">🇻🇳 Tiếng Việt</button>
+                <button class="lang-btn" onclick="setLanguage('id-ID', '🇮🇩 Bahasa Indonesia', 'Menerjemahkan ke bahasa Indonesia')">🇮🇩 Indonesia</button>
+            </div>
+        </div>
+
+        <!-- หน้าจอหลักลูกทัวร์: คำบรรยายสี่เหลี่ยมจัตุรัส และ Map ด้านล่างต่อจากคำบรรยาย -->
+        <div id="tour-screen">
+            <div class="tour-top-section">
+                <button class="back-btn" onclick="goBackToLang()">⬅ Change Language</button>
+
+                <!-- กรอบคำบรรยายตัวหนังสือใหญ่เลื่อนเต็มหน้าจอ วางด้านบนใต้ปุ่ม Back -->
+                <div id="subtitle-marquee-container" class="subtitle-marquee-box">
+                    <span id="subtitle-spot-label" class="subtitle-marquee-label">📍 คำบรรยายจุดท่องเที่ยว</span>
+                    <div id="subtitle-marquee-text" class="subtitle-marquee-track">กำลังเตรียมคำบรรยายตามภาษาที่เลือก...</div>
+                </div>
+
+                <div id="native-notice" class="badge-native">Translating...</div>
+
+                <!-- กล่องคำบรรยายขนาดสี่เหลี่ยมจัตุรัส -->
+                <div id="langCaptionSquareBox" class="lang-caption-square-box">
+                    <div style="font-size: 11px; font-weight: bold; color: #e67e22; margin-bottom: 6px;">
+                        📝 คำบรรยายภาษาที่เลือก (<span id="activeLangCode">th-TH</span>):
+                    </div>
+                    <div id="selectedLangStoryText" style="white-space: pre-line;">กำลังโหลดคำบรรยาย...</div>
+                </div>
+
+                <!-- แผนที่ด้านล่างต่อจากคำบรรยาย -->
+                <div class="card" style="padding: 8px;">
+                    <h4 style="margin: 0 0 6px 0; color: #2c3e50; font-size: 13px;">🗺️ Tour Map</h4>
+                    <div id="listenerMap" class="listener-map-box"></div>
+                </div>
+
+                <button id="startBtn" class="action-btn" onclick="startListener()">🔊 Start GPS Tracking</button>
+
+                <div class="card">
+                    <h3>📍 GPS Status (30m Radius)</h3>
+                    <div class="status-box">
+                        <p id="status">Click start to activate GPS...</p>
+                        <p id="coords" style="font-size: 11px; color: #7f8c8d;">Lat: -, Lng: -</p>
+                        <hr style="border: 0; border-top: 1px solid #d5dbdb; margin: 8px 0;">
+                        <h4 id="currentPlace" style="color: #2c3e50; margin: 3px 0;">Current Narration: -</h4>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ================= Master Device: หน้าที่ 1 (Menu หลัก + QR Code ตรงกลางล่าง) ================= -->
+        <div id="master-menu-screen" style="text-align: left;">
+            <button class="back-btn" onclick="goBackToMode()">⬅ Back to Home</button>
+            <h2 style="text-align: center;">👑 Master Control Menu</h2>
+            <p style="font-size: 12px; color: #666; text-align: center; margin-bottom: 12px;">เลือกเมนูการจัดการสำหรับไกด์นำขบวน</p>
+
+            <button class="mode-select-btn" onclick="showMasterBroadcastScreen()" style="background: #e74c3c; padding: 12px; font-size: 14px;">
+                🎤 พูดกับลูกทัวร์ (Broadcast Voice)
+            </button>
+
+            <button class="mode-select-btn" onclick="showMasterSpotsScreen()" style="background: #2980b9; padding: 12px; font-size: 14px; margin-top: 10px;">
+                📍 บันทึกจุดการท่องเที่ยว (Manage Spots & Map)
+            </button>
+
+            <div class="master-qr-container">
+                <h4 style="margin: 0 0 3px 0; color: #2c3e50; font-size: 13px;">📲 Scan for Tour Audio Guide</h4>
+                <p style="font-size: 10px; color: #666; margin: 0 0 5px 0;">ให้ลูกทัวร์สแกน QR Code นี้เพื่อเปิดหน้าเว็บฟังเสียง</p>
+                <div id="qrcode"></div>
+            </div>
+        </div>
+
+        <!-- ================= Master Device: หน้าจอพูดกับลูกทัวร์ (Broadcast) ================= -->
+        <div id="master-broadcast-screen" style="text-align: left;">
+            <button class="back-btn" onclick="goBackToMasterMenu()">⬅ Back to Menu</button>
+            <h2 style="text-align: center;">🎤 Broadcast Voice</h2>
+
+            <div class="card" style="text-align: center; margin-top: 20px;">
+                <p style="font-size: 13px; color: #555; margin-bottom: 15px;">กดปุ่มไมโครโฟนเพื่อเริ่มพูดกระจายเสียงสดไปยังลูกทัวร์ทุกคน</p>
+
+                <button id="micBtn" class="mic-btn" onclick="toggleBroadcast()">
+                    🎤 Start Broadcast
+                </button>
+
+                <p id="micStatus" style="font-size: 12px; color: #e74c3c; margin-top: 15px; font-weight: bold;">Status: Mic Muted</p>
+            </div>
+
+            <div class="card">
+                <h3>📢 Transmission Status</h3>
+                <p style="font-size: 12px; color: #666;">• Protocol: WebRTC / WebSocket<br>• Connected Listeners: <b style="color: #27ae60;">Active</b></p>
+            </div>
+        </div>
+
+        <!-- ================= Master Device: หน้าที่ 2 (บันทึกจุดการท่องเที่ยว + แผนที่ + แก้ไขจุด) ================= -->
+        <div id="master-spots-screen" style="text-align: left;">
+            <div class="spots-top-bar">
+                <button id="fastRecordBtn" type="button" class="fast-record-circle-btn" onclick="fastRecordCurrentSpot()" title="บันทึกจุดท่องเที่ยวใกล้เคียงใน 30 ม. จาก OSM และตำแหน่งปัจจุบันอัตโนมัติ">
+                    <span>⚡</span>
+                    <span>FAST</span>
+                    <span>RECORD</span>
+                </button>
+                <div class="spots-top-right-col">
+                    <button class="back-btn" onclick="goBackToMasterMenu()">⬅ Back to Menu</button>
+                    <div class="spots-header-row">
+                        <h2>📍 Route &amp; Story Manager</h2>
+                        <button id="masterGpsToggleBtn" type="button" class="gps-circle-btn" onclick="toggleMasterGps()" title="เปิด/ปิด GPS">GPS</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ส่วนแสดงแผนที่ -->
+            <div class="card" style="padding: 8px;">
+                <!-- ช่องค้นหาบน Map -->
+                <div class="map-search-row">
+                    <input type="text" id="mapSearchInput" class="map-search-input" placeholder="ค้นหาสถานที่บน Map (เช่น วงเวียนใหญ่, วัดพระแก้ว)" onkeydown="if(event.key==='Enter'){searchMapPlace();}">
+                    <button type="button" class="map-search-btn" onclick="searchMapPlace()">🔍 ค้นหา</button>
+                </div>
+
+                <div style="display: flex; justify-content: space-between; align-items: center; gap: 4px; margin-bottom: 6px; flex-wrap: wrap;">
+                    <div id="liveCoordChip" class="live-coord-chip" onclick="applyRealtimeCoordsToForm()" title="คลิกเพื่อดึงพิกัดและบันทึกจุดท่องเที่ยวลงรายการอัตโนมัติ">
+                        <span id="liveLatLngText">Lat: -, Lng: -</span>
+                    </div>
+                    <div class="map-quick-controls">
+                        <button type="button" class="map-zoom-btn" onclick="zoomMapBy(1)" title="ซูมเข้า">+</button>
+                        <span id="mapZoomLevelBadge" class="map-zoom-badge">z17</span>
+                        <button type="button" class="map-zoom-btn" onclick="zoomMapBy(-1)" title="ซูมออก">-</button>
+                        <button type="button" class="map-reset-zoom-btn" onclick="resetZoomTo17()" title="รีเซ็ตระดับซูมกลับเป็น z17">z17</button>
+                        <button type="button" id="freePanToggleBtn" class="map-free-pan-btn" onclick="toggleFreePanMode()" title="สลับโหมดเลื่อนแผนที่อิสระ / ล็อกตำแหน่งปัจจุบัน">🔓 อิสระ</button>
+                        <button type="button" onclick="centerMapOnUser()" style="background:#27ae60; color:white; border:none; padding:4px 6px; font-size:9px; border-radius:4px; cursor:pointer; font-weight:bold;">🎯 ฉัน</button>
+                    </div>
+                </div>
+
+                <!-- กรอบสี่เหลี่ยมด้านนอกเหนือแผนที่ แสดงชื่อสถานที่จาก OpenStreetMap และ Double-click เพื่อดึงข้อมูล -->
+                <div id="centerOsmInfoBox" class="osm-center-box" ondblclick="fillFormFromOsmBox()" title="Double-click ที่กรอบนี้เพื่อดึงชื่อสถานที่ พิกัด และประวัติลงฟอร์ม">
+                    <div id="centerOsmTitle" class="osm-center-title">🌐 OpenStreetMap (จุดกึ่งกลางแผนที่)</div>
+                    <div id="centerOsmPlaceName" class="osm-center-detail" style="font-weight:700;">กำลังตรวจสอบตำแหน่งกึ่งกลางแผนที่...</div>
+                    <div id="centerOsmAddress" class="osm-center-detail" style="color:#555; font-size:9px;">-</div>
+                </div>
+
+                <div style="font-size: 10px; color: #27ae60; margin-bottom: 4px;">(Marker ตรงกลาง = สีเขียว • Double-click กรอบ OSM ด้านบนเพื่อดึงชื่อ/พิกัด/ประวัติ หรือ Double-click marker เพื่อบันทึกลงตารางทันที)</div>
+                <div id="map" style="width: 100%; height: 280px; border-radius: 8px; border: 1px solid #ccc; position: relative;"></div>
+
+                <!-- Prompt ยืนยันการย้ายจุดหลังลากหมุดเสร็จ -->
+                <div id="moveConfirmModal" class="move-confirm-box">
+                    <div id="moveConfirmTitle" class="move-confirm-title">ต้องการย้ายจุดนี้ใช่ไหม?</div>
+                    <div id="moveConfirmCoords" class="move-confirm-coords">Lat: -, Lng: -</div>
+                    <div class="move-confirm-actions">
+                        <button type="button" class="btn-confirm-yes" onclick="confirmMoveSpot(true)">Yes</button>
+                        <button type="button" class="btn-confirm-no" onclick="confirmMoveSpot(false)">No</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ฟอร์มเพิ่ม / แก้ไขข้อมูลจุดท่องเที่ยว -->
+            <div class="card">
+                <h4 id="spotFormTitle" style="margin-top: 0; color: #2c3e50; font-size: 13px;">📌 Add Tour Spot (Thai)</h4>
+                <input type="text" id="spotName" placeholder="ชื่อสถานที่ (ภาษาไทย)" style="width:100%; padding:6px; margin-bottom:6px; box-sizing:border-box; border: 1px solid #ccc; border-radius: 5px; font-size: 12px;">
+                <div style="display: flex; gap: 6px; margin-bottom:6px;">
+                    <input type="text" id="spotLat" placeholder="Latitude" style="width:50%; padding:6px; box-sizing:border-box; border: 1px solid #ccc; border-radius: 5px; font-size: 12px;">
+                    <input type="text" id="spotLng" placeholder="Longitude" style="width:50%; padding:6px; box-sizing:border-box; border: 1px solid #ccc; border-radius: 5px; font-size: 12px;">
+                </div>
+                <textarea id="spotStory" class="story-textarea-10lines" placeholder="สร้างขึ้นเมื่อใด, โดยใคร, สำคัญอย่างไร, จุดเด่นของสถานที่นี้คืออะไร&#10;ตลาด/ร้านอาหาร: มิชลินกี่ดาว, อาหารแนะนำคืออะไร&#10;ชื่อทั่วไป (ถนน/ซอย/แยก): -"></textarea>
+
+                <div style="display: flex; gap: 6px;">
+                    <button id="saveSpotBtn" onclick="addSpot()" style="background:#27ae60; color:white; border:none; padding:8px; flex: 1; border-radius:5px; font-weight:bold; cursor:pointer; font-size:13px;">➕ บันทึกจุดท่องเที่ยวนี้</button>
+                    <button id="cancelEditBtn" onclick="cancelEdit()" style="display:none; background:#95a5a6; color:white; border:none; padding:8px; border-radius:5px; font-weight:bold; cursor:pointer; font-size:12px;">ยกเลิก</button>
+                </div>
+            </div>
+
+            <!-- สรุปรายการจุดที่บันทึกแล้ว (แสดงได้อย่างน้อย 10 รายการโดยไม่ต้องเลื่อน) -->
+            <div class="card">
+                <h4 style="margin-top: 0; color: #2c3e50; font-size: 13px;">📋 Saved Spots (<span id="spotCount">0</span>)</h4>
+                <div id="spotList" class="saved-spots-box">
+                    <p style="color: #888; text-align: center; margin: 5px 0;">ยังไม่มีข้อมูลจุดท่องเที่ยว</p>
+                </div>
+
+                <button onclick="showAllSpotsScreen()" style="background:#8e44ad; color:white; border:none; padding:7px; width:100%; border-radius:5px; font-weight:bold; cursor:pointer; font-size:12px; margin-bottom:6px;">📋 ดูรายการทั้งหมด (Edit / Save รายจุด)</button>
+                <div style="display: flex; gap: 6px;">
+                    <button onclick="exportToJsonFile()" style="background:#2980b9; color:white; border:none; padding:7px; flex: 1; border-radius:5px; font-weight:bold; cursor:pointer; font-size:11px;">📥 บันทึกออก (.txt)</button>
+                    <button onclick="triggerImportSpotsFile()" style="background:#16a085; color:white; border:none; padding:7px; flex: 1; border-radius:5px; font-weight:bold; cursor:pointer; font-size:11px;">📂 นำเข้าไฟล์ (.txt)</button>
+                </div>
+                <input type="file" id="importSpotsFileInput" accept=".txt,.json,text/plain,application/json" style="display:none;" onchange="handleImportSpotsFile(event)">
+            </div>
+        </div>
+
+        <!-- ================= Master Device: หน้าแสดงรายการทั้งหมดที่บันทึกไว้ (Edit & Save ท้ายแต่ละรายการ) ================= -->
+        <div id="master-all-spots-screen" style="text-align: left;">
+            <button class="back-btn" onclick="goBackFromAllSpots()">⬅ กลับหน้าบันทึกจุด</button>
+            <h2 style="text-align: center;">📋 รายการจุดที่บันทึกทั้งหมด (<span id="allSpotsCount">0</span>)</h2>
+            <p style="font-size: 11px; color: #666; text-align: center; margin-top: 0;">กดปุ่ม "แก้ไข" เพื่อแก้ข้อมูล แล้วกด "บันทึก" ท้ายรายการ</p>
+
+            <div id="allSpotsContainer" style="margin-top: 10px;">
+                <p style="color: #888; text-align: center; font-size: 12px;">ยังไม่มีข้อมูลจุดท่องเที่ยว</p>
+            </div>
+        </div>
+
+    </div>
+</div>
+
+<!-- โหลดไลบรารี JavaScript ของแผนที่ Leaflet -->
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+<script>
+    let currentLang = 'th-TH';
+    let activeSpotObj = null;
+    let watchId = null;
+    let isBroadcasting = false;
+
+    const STORAGE_KEY = 'bike_tour_master_spots_v1';
+    let masterSpots = loadSpotsFromStorage();
+    let unlockedEditIds = new Set();
+    let editingSpotId = null;
+    let map = null;
+    let markersLayer = null;
+    let spotMarkerRefs = new Map();
+    let userLocationMarker = null;
+    let firstCenterDone = false;
+    let masterGpsEnabled = true;
+    let freePanMode = true;
+    let latestMasterCoords = null;
+    let pendingMoveData = null;
+
+    let listenerMap = null;
+    let listenerMarkersLayer = null;
+    let listenerUserMarker = null;
+
+    let centeredSpotId = null;
+    let latestOsmInfo = {
+        placeName: "",
+        displayName: "",
+        lat: "",
+        lng: ""
+    };
+    let osmFetchTimer = null;
+    let lastOsmKey = "";
+
+    const LANG_PREFIX_MAP = {
+        'th-TH': 'คำบรรยายสถานที่',
+        'en-US': 'Audio guide for',
+        'zh-CN': '景点语音导览',
+        'zh-HK': '景點語音導覽',
+        'ja-JP': '観光スポット案内',
+        'fr-FR': 'Guide audio pour',
+        'de-DE': 'Audioguide für',
+        'es-ES': 'Audioguía de',
+        'vi-VN': 'Thuyết minh điểm đến',
+        'id-ID': 'Panduan audio untuk'
+    };
+
+    const orangeSpotIcon = L.divIcon({
+        className: 'orange-marker-pin',
+        iconSize: [22, 22],
+        iconAnchor: [11, 11],
+        popupAnchor: [0, -11]
+    });
+
+    const greenSpotIcon = L.divIcon({
+        className: 'green-marker-pin',
+        iconSize: [24, 24],
+        iconAnchor: [12, 12],
+        popupAnchor: [0, -12]
+    });
+
+    function loadSpotsFromStorage() {
+        try {
+            const raw = localStorage.getItem(STORAGE_KEY);
+            if (!raw) return [];
+            const parsed = JSON.parse(raw);
+            return Array.isArray(parsed) ? parsed : [];
+        } catch (err) {
+            return [];
+        }
+    }
+
+    function saveSpotsToStorage() {
+        try {
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(masterSpots));
+        } catch (err) {
+            console.warn("Storage error:", err);
+        }
+    }
+
+    window.onload = function () {
+        const currentUrl = window.location.href;
+        const qrContainer = document.getElementById("qrcode");
+        if (qrContainer && typeof QRCode !== "undefined") {
+            try {
+                qrContainer.innerHTML = "";
+                new QRCode(qrContainer, {
+                    text: currentUrl,
+                    width: 90,
+                    height: 90,
+                    colorDark: "#000000",
+                    colorLight: "#ffffff",
+                    correctLevel: QRCode.CorrectLevel.H
+                });
+            } catch (err) {
+                console.warn("QRCode init warning:", err);
+            }
+        }
+        updateMasterUI();
+        syncMasterGpsButtonUI();
+        syncFreePanButtonUI();
+    };
+
+    const tourSpots = [
+        {
+            id: 1,
+            name: "วัดพระศรีรัตนศาสดาราม (Wat Phra Kaew)",
+            lat: 13.7515,
+            lng: 100.4927,
+            radius: 30,
+            stories: {
+                "th-TH": "วัดพระศรีรัตนศาสดาราม หรือ วัดพระแก้ว สร้างขึ้นในรัชสมัยพระบาทสมเด็จพระพุทธยอดฟ้าจุฬาโลกมหาราช เป็นวัดคู่บ้านคู่เมืองของประเทศไทย",
+                "en-US": "The Temple of the Emerald Buddha, or Wat Phra Kaew, was built during the reign of King Rama the First. It is the most sacred Buddhist temple in Thailand.",
+                "zh-CN": "玉佛寺建于拉玛一世统治时期，是泰国最神圣的佛教寺庙，供奉着尊贵的翡翠佛像。",
+                "zh-HK": "玉佛寺喺拉瑪一世統治期間建造，係泰國最神聖嘅佛教寺廟。",
+                "ja-JP": "ワット・プラケオはラーマ1世の治世に建てられたタイで最も格式の高い仏教寺院です。",
+                "fr-FR": "Le Temple du Bouddha d'Émeraude a été construit sous le règne du roi Rama Ier. C'est le temple bouddhiste le plus sacré de Thaïlande.",
+                "de-DE": "Der Tempel des Smaragd-Buddha wurde während der Regierungszeit von König Rama I. erbaut.",
+                "es-ES": "El Templo del Buda de Esmeralda fue construido durante el reinado del rey Rama I.",
+                "vi-VN": "Chùa Phật Ngọc được xây dựng dưới triều đại vua Rama I. Đây là ngôi chùa linh thiêng.",
+                "id-ID": "Candi Buddha Zamrud dibangun pada masa pemerintahan Raja Pertama."
+            },
+            played: false
+        }
+    ];
+
+    function initListenerMap() {
+        if (!listenerMap) {
+            listenerMap = L.map('listenerMap', {
+                minZoom: 3,
+                maxZoom: 22
+            }).setView([13.7515, 100.4927], 16);
+
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                minZoom: 3,
+                maxNativeZoom: 19,
+                maxZoom: 22,
+                attribution: '© OpenStreetMap'
+            }).addTo(listenerMap);
+
+            listenerMarkersLayer = L.layerGroup().addTo(listenerMap);
+        } else {
+            listenerMap.invalidateSize();
+        }
+        refreshListenerMapMarkers();
+    }
+
+    function refreshListenerMapMarkers() {
+        if (!listenerMap || !listenerMarkersLayer) return;
+        listenerMarkersLayer.clearLayers();
+
+        const combined = [
+            ...tourSpots,
+            ...masterSpots
+        ];
+
+        combined.forEach(spot => {
+            const lat = Number(spot.lat);
+            const lng = Number(spot.lng);
+            if (!isNaN(lat) && !isNaN(lng)) {
+                L.marker([lat, lng])
+                    .addTo(listenerMarkersLayer)
+                    .bindPopup(`<b>${escapeHtml(spot.name || "Spot")}</b>`);
+            }
+        });
+    }
+
+    function updateListenerMapPosition(lat, lng, focusSpot) {
+        if (!listenerMap) return;
+        const latFixed = Number(lat).toFixed(5);
+        const lngFixed = Number(lng).toFixed(5);
+
+        if (!listenerUserMarker) {
+            listenerUserMarker = L.marker([lat, lng], { icon: orangeSpotIcon })
+                .addTo(listenerMap)
+                .bindPopup(`ตำแหน่งปัจจุบัน<br>Lat: ${latFixed}, Lng: ${lngFixed}`);
+        } else {
+            listenerUserMarker.setLatLng([lat, lng]);
+            listenerUserMarker.bindPopup(`ตำแหน่งปัจจุบัน<br>Lat: ${latFixed}, Lng: ${lngFixed}`);
+        }
+
+        if (focusSpot && !isNaN(Number(focusSpot.lat)) && !isNaN(Number(focusSpot.lng))) {
+            listenerMap.setView([Number(focusSpot.lat), Number(focusSpot.lng)], 17, { animate: true });
+        } else {
+            listenerMap.setView([lat, lng], 17, { animate: true });
+        }
+    }
+
+    function showLangScreen() {
+        document.getElementById("mode-screen").style.display = "none";
+        document.getElementById("lang-screen").style.display = "block";
+    }
+
+    function showMasterMenuScreen() {
+        document.getElementById("mode-screen").style.display = "none";
+        document.getElementById("master-spots-screen").style.display = "none";
+        document.getElementById("master-all-spots-screen").style.display = "none";
+        document.getElementById("master-broadcast-screen").style.display = "none";
+        document.getElementById("master-menu-screen").style.display = "block";
+    }
+
+    function showMasterBroadcastScreen() {
+        document.getElementById("master-menu-screen").style.display = "none";
+        document.getElementById("master-broadcast-screen").style.display = "block";
+    }
+
+    function resetFastRecordButtonState() {
+        const btn = document.getElementById("fastRecordBtn");
+        if (!btn) return;
+        btn.classList.remove("recorded");
+        btn.innerHTML = `<span>⚡</span><span>FAST</span><span>RECORD</span>`;
+    }
+
+    function showMasterSpotsScreen() {
+        document.getElementById("master-menu-screen").style.display = "none";
+        document.getElementById("master-all-spots-screen").style.display = "none";
+        document.getElementById("master-spots-screen").style.display = "block";
+        masterGpsEnabled = true;
+        freePanMode = (editingSpotId === null && unlockedEditIds.size === 0);
+        syncMasterGpsButtonUI();
+        syncFreePanButtonUI();
+        hideMoveConfirmModal();
+        resetFastRecordButtonState();
+
+        setTimeout(() => {
+            initMap();
+            startMasterLiveTracking();
+            updateMasterUI();
+            evaluateCenterMarkerAndOsm();
+        }, 200);
+    }
+
+    function showAllSpotsScreen() {
+        document.getElementById("master-spots-screen").style.display = "none";
+        document.getElementById("master-all-spots-screen").style.display = "block";
+        renderAllSpotsList();
+    }
+
+    function goBackFromAllSpots() {
+        document.getElementById("master-all-spots-screen").style.display = "none";
+        document.getElementById("master-spots-screen").style.display = "block";
+        setTimeout(() => {
+            if (map) {
+                map.invalidateSize();
+                updateZoomBadge();
+                updateMasterUI();
+                evaluateCenterMarkerAndOsm();
+            }
+        }, 150);
+    }
+
+    function goBackToMasterMenu() {
+        stopMasterLiveTracking();
+        cancelEdit();
+        hideMoveConfirmModal();
+        unlockedEditIds.clear();
+        document.getElementById("master-spots-screen").style.display = "none";
+        document.getElementById("master-all-spots-screen").style.display = "none";
+        document.getElementById("master-broadcast-screen").style.display = "none";
+        document.getElementById("master-menu-screen").style.display = "block";
+    }
+
+    function goBackToMode() {
+        stopMasterLiveTracking();
+        cancelEdit();
+        hideMoveConfirmModal();
+        unlockedEditIds.clear();
+        const tourEl = document.getElementById("tour-screen");
+        tourEl.classList.remove("active-tour");
+        tourEl.style.display = "none";
+        document.getElementById("lang-screen").style.display = "none";
+        document.getElementById("master-menu-screen").style.display = "none";
+        document.getElementById("master-spots-screen").style.display = "none";
+        document.getElementById("master-all-spots-screen").style.display = "none";
+        document.getElementById("master-broadcast-screen").style.display = "none";
+        document.getElementById("mode-screen").style.display = "block";
+        stopListener();
+    }
+
+    function goBackToLang() {
+        const tourEl = document.getElementById("tour-screen");
+        tourEl.classList.remove("active-tour");
+        tourEl.style.display = "none";
+        document.getElementById("lang-screen").style.display = "block";
+        stopListener();
+    }
+
+    function getInstantStoryByLang(spot, langCode) {
+        if (!spot) return "";
+        if (spot.stories && spot.stories[langCode]) {
+            return spot.stories[langCode];
+        }
+        const rawStory = (spot.stories && spot.stories['th-TH']) || spot.story || "";
+        const spotName = spot.name || "Spot";
+        if (langCode === 'th-TH') {
+            return rawStory;
+        }
+        const prefix = LANG_PREFIX_MAP[langCode] || langCode;
+        return `${prefix} (${spotName}): ${rawStory}`;
+    }
+
+    function setLanguage(langCode, langName, nativeNoticeText) {
+        currentLang = langCode;
+        document.getElementById("native-notice").innerText = `${langName} — ${nativeNoticeText}`;
+        document.getElementById("activeLangCode").innerText = langCode;
+        document.getElementById("lang-screen").style.display = "none";
+
+        const tourEl = document.getElementById("tour-screen");
+        tourEl.style.display = "flex";
+        tourEl.classList.add("active-tour");
+
+        resetAllSpotsPlayedState();
+
+        const targetSpot = activeSpotObj || tourSpots[0];
+        const instantText = getInstantStoryByLang(targetSpot, currentLang);
+        document.getElementById("selectedLangStoryText").innerText = instantText || "-";
+        showSubtitleMarquee(targetSpot.name || "Tour Spot", instantText || "-");
+
+        setTimeout(() => {
+            initListenerMap();
+            if (targetSpot && !isNaN(Number(targetSpot.lat)) && !isNaN(Number(targetSpot.lng))) {
+                listenerMap.setView([Number(targetSpot.lat), Number(targetSpot.lng)], 16);
+            }
+        }, 150);
+    }
+
+    function resetAllSpotsPlayedState() {
+        tourSpots.forEach(s => s.played = false);
+        masterSpots.forEach(s => s.played = false);
+    }
+
+    function showSubtitleMarquee(spotTitle, text) {
+        const box = document.getElementById("subtitle-marquee-container");
+        const label = document.getElementById("subtitle-spot-label");
+        const track = document.getElementById("subtitle-marquee-text");
+        if (!box || !track) return;
+
+        if (label) {
+            label.innerText = `📍 ${spotTitle} [${currentLang}]`;
+        }
+
+        track.style.animation = 'none';
+        void track.offsetWidth;
+        track.textContent = text;
+        const durationSec = Math.max(12, Math.min(36, Math.ceil(text.length * 0.22)));
+        track.style.animation = `marqueeScroll ${durationSec}s linear infinite`;
+        box.style.display = "block";
+    }
+
+    function startListener() {
+        document.getElementById("status").innerText = "Tracking GPS coordinates... (Ready)";
+        document.getElementById("startBtn").disabled = true;
+        document.getElementById("startBtn").style.backgroundColor = "#95a5a6";
+        document.getElementById("startBtn").innerText = "GPS Tracking Active...";
+
+        if ('speechSynthesis' in window) {
+            try {
+                window.speechSynthesis.speak(new SpeechSynthesisUtterance(""));
+            } catch (err) {
+                console.warn("Speech unlock warning:", err);
+            }
+        }
+
+        initListenerMap();
+
+        if ("geolocation" in navigator) {
+            watchId = navigator.geolocation.watchPosition(successPosition, errorPosition, {
+                enableHighAccuracy: true,
+                maximumAge: 1000,
+                timeout: 5000
+            });
+        } else {
+            document.getElementById("status").innerText = "Geolocation is not supported on this browser.";
+        }
+    }
+
+    function stopListener() {
+        if (watchId !== null) {
+            navigator.geolocation.clearWatch(watchId);
+            watchId = null;
+        }
+        document.getElementById("startBtn").disabled = false;
+        document.getElementById("startBtn").style.backgroundColor = "#2980b9";
+        document.getElementById("startBtn").innerText = "🔊 Start GPS Tracking";
+    }
+
+    function toggleBroadcast() {
+        isBroadcasting = !isBroadcasting;
+        const micBtn = document.getElementById("micBtn");
+        const micStatus = document.getElementById("micStatus");
+
+        if (isBroadcasting) {
+            micBtn.classList.add("recording");
+            micBtn.innerHTML = "🔴 Broadcasting Live...";
+            micStatus.innerText = "Status: Streaming live audio to listeners...";
+            micStatus.style.color = "#27ae60";
+        } else {
+            micBtn.classList.remove("recording");
+            micBtn.innerHTML = "🎤 Start Broadcast";
+            micStatus.innerText = "Status: Mic Muted";
+            micStatus.style.color = "#e74c3c";
+        }
+    }
+
+    function successPosition(position) {
+        processLocation(position.coords.latitude, position.coords.longitude);
+    }
+
+    function processLocation(currentLat, currentLng) {
+        document.getElementById("coords").innerText = `Lat: ${currentLat.toFixed(5)}, Lng: ${currentLng.toFixed(5)}`;
+        updateListenerMapPosition(currentLat, currentLng, null);
+
+        const combinedSpots = [
+            ...tourSpots,
+            ...masterSpots.map(s => ({
+                ...s,
+                radius: s.radius || 30,
+                stories: s.stories || { "th-TH": s.story }
+            }))
+        ];
+
+        let insideAnySpot = false;
+
+        for (const spot of combinedSpots) {
+            const distance = getDistanceFromLatLonInMeters(currentLat, currentLng, spot.lat, spot.lng);
+
+            if (distance <= spot.radius) {
+                insideAnySpot = true;
+                activeSpotObj = spot;
+                const storyText = getInstantStoryByLang(spot, currentLang);
+                const titleText = spot.name || "Tour Spot";
+
+                document.getElementById("selectedLangStoryText").innerText = storyText || "-";
+                showSubtitleMarquee(titleText, storyText || "-");
+                updateListenerMapPosition(currentLat, currentLng, spot);
+
+                if (!spot.played) {
+                    document.getElementById("currentPlace").innerText = `🎙️ Narrating: ${titleText} (${Math.round(distance)}m away)`;
+                    speakStory(storyText);
+                    spot.played = true;
+                    const origTour = tourSpots.find(t => t.id === spot.id);
+                    if (origTour) origTour.played = true;
+                    const origMaster = masterSpots.find(m => m.id === spot.id);
+                    if (origMaster) origMaster.played = true;
+                }
+            } else {
+                if (spot.played) {
+                    spot.played = false;
+                    const origTour = tourSpots.find(t => t.id === spot.id);
+                    if (origTour) origTour.played = false;
+                    const origMaster = masterSpots.find(m => m.id === spot.id);
+                    if (origMaster) origMaster.played = false;
+                }
+            }
+        }
+
+        if (!insideAnySpot) {
+            document.getElementById("currentPlace").innerText = "Riding along route... (Outside 30m radius)";
+        }
+    }
+
+    function errorPosition(error) {
+        document.getElementById("status").innerText = "GPS Error: " + error.message;
+    }
+
+    function getDistanceFromLatLonInMeters(lat1, lon1, lat2, lon2) {
+        const R = 6371e3;
+        const dLat = deg2rad(lat2 - lat1);
+        const dLon = deg2rad(lon2 - lon1);
+        const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+            Math.cos(deg2rad(lat1)) * Math.cos(deg2rad(lat2)) *
+            Math.sin(dLon / 2) * Math.sin(dLon / 2);
+        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+        return R * c;
+    }
+
+    function deg2rad(deg) {
+        return deg * (Math.PI / 180);
+    }
+
+    function speakStory(text) {
+        if ('speechSynthesis' in window) {
+            try {
+                window.speechSynthesis.cancel();
+                const utterance = new SpeechSynthesisUtterance(text);
+                utterance.lang = currentLang;
+                utterance.rate = 1.0;
+
+                utterance.onend = function () {
+                    document.getElementById("currentPlace").innerText = "✅ Narration finished. Continuing tour...";
+                };
+
+                window.speechSynthesis.speak(utterance);
+            } catch (err) {
+                console.warn("Speech synthesis warning:", err);
+            }
+        } else {
+            alert("Device does not support speech synthesis.");
+        }
+    }
+
+    // ================= ฟังก์ชันค้นหาบน Map =================
+    async function searchMapPlace() {
+        const inputEl = document.getElementById("mapSearchInput");
+        if (!inputEl) return;
+        const query = inputEl.value.trim();
+        if (!query) return;
+
+        const placeEl = document.getElementById("centerOsmPlaceName");
+        if (placeEl) {
+            placeEl.innerText = `กำลังค้นหา "${query}" บน OpenStreetMap...`;
+        }
+
+        try {
+            const url = `https://nominatim.openstreetmap.org/search?format=jsonv2&q=${encodeURIComponent(query)}&accept-language=th,en&limit=1`;
+            const res = await fetch(url, { headers: { "Accept": "application/json" } });
+            if (!res.ok) throw new Error("Search failed");
+            const results = await res.json();
+            if (!Array.isArray(results) || results.length === 0) {
+                alert("ไม่พบสถานที่ที่ค้นหาบนแผนที่ครับ");
+                evaluateCenterMarkerAndOsm();
+                return;
+            }
+
+            const hit = results[0];
+            const latNum = Number(parseFloat(hit.lat).toFixed(5));
+            const lngNum = Number(parseFloat(hit.lon).toFixed(5));
+            const foundName = (hit.name || query).trim();
+
+            if (map && !isNaN(latNum) && !isNaN(lngNum)) {
+                map.setView([latNum, lngNum], 17, { animate: true });
+                updateZoomBadge();
+            }
+
+            lastOsmKey = `${latNum.toFixed(5)},${lngNum.toFixed(5)}`;
+            latestOsmInfo = {
+                placeName: foundName,
+                displayName: hit.display_name || foundName,
+                lat: latNum.toFixed(5),
+                lng: lngNum.toFixed(5)
+            };
+            renderOsmBox(latestOsmInfo, null);
+        } catch (err) {
+            alert("เกิดข้อผิดพลาดในการค้นหาสถานที่บน Map ครับ");
+            evaluateCenterMarkerAndOsm();
+        }
+    }
+
+    // ================= ฟังก์ชันจัดการแผนที่ เพิ่ม แก้ไข ลบ ลากย้ายจุด Fast Record และนำเข้า/ส่งออกจุดท่องเที่ยว =================
+    let masterWatchId = null;
+
+    function getCurrentDeviceCoords() {
+        if (latestMasterCoords) {
+            return {
+                lat: parseFloat(latestMasterCoords.lat),
+                lng: parseFloat(latestMasterCoords.lng)
+            };
+        }
+        if (userLocationMarker) {
+            const p = userLocationMarker.getLatLng();
+            return { lat: p.lat, lng: p.lng };
+        }
+        if (map) {
+            const c = map.getCenter();
+            return { lat: c.lat, lng: c.lng };
+        }
+        return { lat: 13.7515, lng: 100.4927 };
+    }
+
+    function fetchCurrentGpsOnce(timeoutMs = 3500) {
+        return new Promise((resolve) => {
+            if (!("geolocation" in navigator)) {
+                resolve(getCurrentDeviceCoords());
+                return;
+            }
+            let settled = false;
+            const timer = setTimeout(() => {
+                if (!settled) {
+                    settled = true;
+                    resolve(getCurrentDeviceCoords());
+                }
+            }, timeoutMs);
+
+            navigator.geolocation.getCurrentPosition(
+                (pos) => {
+                    if (settled) return;
+                    settled = true;
+                    clearTimeout(timer);
+                    const lat = pos.coords.latitude;
+                    const lng = pos.coords.longitude;
+                    updateRealtimeCoordDisplay(lat, lng);
+                    resolve({ lat, lng });
+                },
+                () => {
+                    if (settled) return;
+                    settled = true;
+                    clearTimeout(timer);
+                    resolve(getCurrentDeviceCoords());
+                },
+                { enableHighAccuracy: true, maximumAge: 2000, timeout: timeoutMs }
+            );
+        });
+    }
+
+    async function findNearestTouristOsmSpotWithin30m(lat, lng) {
+        let areaLocationText = "";
+        let reverseFallbackName = "";
+        let reverseCategory = "";
+        let reverseTags = {};
+
+        try {
+            const revUrl = `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${encodeURIComponent(lat)}&lon=${encodeURIComponent(lng)}&accept-language=th,en`;
+            const revRes = await fetch(revUrl, { headers: { "Accept": "application/json" } });
+            if (revRes.ok) {
+                const revData = await revRes.json();
+                const addr = revData.address || {};
+                reverseTags = addr;
+                reverseCategory = revData.category || revData.type || "";
+                reverseFallbackName =
+                    revData.name ||
+                    addr.tourism ||
+                    addr.historic ||
+                    addr.amenity ||
+                    addr.shop ||
+                    addr.leisure ||
+                    addr.building ||
+                    addr.road ||
+                    "";
+
+                const subdistrict = addr.suburb || addr.quarter || addr.village || "";
+                const district = addr.city_district || addr.district || addr.county || "";
+                const province = addr.city || addr.state || "";
+                areaLocationText = [subdistrict, district, province].filter(Boolean).join(" ");
+            }
+        } catch (err) {
+            console.warn("Reverse geocode info:", err);
+        }
+
+        try {
+            const query = `[out:json][timeout:8];
+(
+  nwr(around:30.0,${lat},${lng})["tourism"]["name"];
+  nwr(around:30.0,${lat},${lng})["historic"]["name"];
+  nwr(around:30.0,${lat},${lng})["amenity"]["name"];
+  nwr(around:30.0,${lat},${lng})["shop"]["name"];
+  nwr(around:30.0,${lat},${lng})["leisure"]["name"];
+  nwr(around:30.0,${lat},${lng})["building"]["name"];
+);
+out center tags;`;
+            const res = await fetch("https://overpass-api.de/api/interpreter", {
+                method: "POST",
+                headers: { "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8" },
+                body: "data=" + encodeURIComponent(query)
+            });
+
+            if (res.ok) {
+                const data = await res.json();
+                const elements = Array.isArray(data.elements) ? data.elements : [];
+
+                const scored = elements
+                    .map((el) => {
+                        const tags = el.tags || {};
+                        const name = tags["name:th"] || tags.name || tags["name:en"] || "";
+                        const elLat = el.lat !== undefined ? el.lat : (el.center && el.center.lat);
+                        const elLng = el.lon !== undefined ? el.lon : (el.center && el.center.lon);
+                        if (!name || typeof elLat !== "number" || typeof elLng !== "number") return null;
+
+                        const dist = getDistanceFromLatLonInMeters(lat, lng, elLat, elLng);
+                        const isSpecificOrFood = Boolean(
+                            tags.tourism ||
+                            tags.historic ||
+                            tags.amenity === "place_of_worship" ||
+                            tags.amenity === "restaurant" ||
+                            tags.amenity === "cafe" ||
+                            tags.amenity === "marketplace" ||
+                            tags.amenity === "school" ||
+                            tags.amenity === "university" ||
+                            tags.shop === "mall" ||
+                            tags.leisure === "park"
+                        );
+                        const categoryLabel =
+                            tags.tourism || tags.historic || tags.amenity || tags.shop || tags.leisure || tags.building || "";
+
+                        return {
+                            name: name.trim(),
+                            dist,
+                            isSpecificOrFood,
+                            categoryLabel,
+                            areaLocationText,
+                            tags
+                        };
+                    })
+                    .filter((item) => item !== null && item.dist <= 30.0);
+
+                scored.sort((a, b) => {
+                    if (a.isSpecificOrFood !== b.isSpecificOrFood) {
+                        return a.isSpecificOrFood ? -1 : 1;
+                    }
+                    return a.dist - b.dist;
+                });
+
+                if (scored.length > 0) {
+                    return scored[0];
+                }
+            }
+        } catch (err) {
+            console.warn("Overpass query fallback:", err);
+        }
+
+        const resolvedName = reverseFallbackName
+            ? reverseFallbackName.trim()
+            : `จุดพิกัด ${lat.toFixed(5)}, ${lng.toFixed(5)}`;
+
+        return {
+            name: resolvedName,
+            dist: 0,
+            isSpecificOrFood: false,
+            categoryLabel: reverseCategory,
+            areaLocationText,
+            tags: reverseTags
+        };
+    }
+
+    function extractEraAndAgeText(text) {
+        const currentBuddhistYear = 2569;
+        const currentGregorianYear = 2026;
+        let eraText = "";
+        let ageText = "";
+
+        if (!text) {
+            return { eraText, ageText };
+        }
+
+        const beMatch = text.match(/พ\.?\s*ศ\.?\s*(\d{4})/);
+        const adMatch = text.match(/ค\.?\s*ศ\.?\s*(\d{4})/);
+
+        if (beMatch) {
+            const beYear = parseInt(beMatch[1], 10);
+            if (!isNaN(beYear) && beYear > 1800 && beYear <= currentBuddhistYear) {
+                eraText = `พ.ศ. ${beYear}`;
+                ageText = `ประมาณ ${currentBuddhistYear - beYear} ปี`;
+            }
+        } else if (adMatch) {
+            const adYear = parseInt(adMatch[1], 10);
+            if (!isNaN(adYear) && adYear > 1000 && adYear <= currentGregorianYear) {
+                eraText = `ค.ศ. ${adYear} (พ.ศ. ${adYear + 543})`;
+                ageText = `ประมาณ ${currentGregorianYear - adYear} ปี`;
+            }
+        }
+
+        if (!eraText) {
+            const reignMatch = text.match(/(รัชสมัย[^ฯ,.\n]{2,45}|สมัย[^ฯ,.\n]{2,35})/);
+            if (reignMatch) {
+                eraText = reignMatch[1].trim();
+            }
+        }
+
+        return { eraText, ageText };
+    }
+
+    function extractFounderText(text) {
+        if (!text) return "";
+        const founderMatch = text.match(/(สร้างขึ้นโดย[^ฯ,.\n]{2,50}|สร้างโดย[^ฯ,.\n]{2,50}|สถาปนาโดย[^ฯ,.\n]{2,50}|พระบาทสมเด็จพระ[^ฯ,.\n]{3,55}|สมเด็จพระเจ้าบรมวงศ์เธอ[^ฯ,.\n]{3,55}|สมเด็จพระ[^ฯ,.\n]{3,55})/);
+        return founderMatch ? founderMatch[1].trim() : "";
+    }
+
+    async function fetchThaiWikiSummary(title) {
+        if (!title) return "";
+        try {
+            const cleanTitle = title.replace(/\(.*?\)/g, "").trim();
+            const url = `https://th.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(cleanTitle)}`;
+            const res = await fetch(url, { headers: { "Accept": "application/json" } });
+            if (!res.ok) return "";
+            const data = await res.json();
+            if (data && typeof data.extract === "string" && data.extract.trim()) {
+                return data.extract.trim();
+            }
+        } catch (err) {
+            console.warn("Wiki lookup skipped:", err);
+        }
+        return "";
+    }
+
+    function isGenericNonTouristName(name, tags, categoryLabel) {
+        const trimmed = (name || "").trim();
+        if (!trimmed) return true;
+
+        const isSpecificCategory =
+            /สะพาน|ย่าน|ชุมชน|เจดีย์|วัด|อนุสาวรีย์|อนุเสาวรีย์|สนามหลวง|พระราชวัง|วัง|รูปปั้น|โรงเรียน|มหาวิทยาลัย|วิทยาลัย|พิพิธภัณฑ์|ป้อม|ศาล|ตลาด|ร้านอาหาร|คาเฟ่|ก๋วยเตี๋ยว|ข้าวมันไก่|ผัดไทย|ส้มตำ/.test(trimmed) ||
+            Boolean(tags && (tags.tourism || tags.historic || tags.amenity === "place_of_worship" || tags.amenity === "restaurant" || tags.amenity === "cafe" || tags.amenity === "marketplace" || tags.amenity === "school" || tags.amenity === "university"));
+
+        if (isSpecificCategory) return false;
+
+        const isGenericPattern =
+            /^(ถนน|ถ\.|ซอย|ซ\.|แยก|สี่แยก|สามแยก|ห้าแยก|ทางหลวง|ทางด่วน|วงเวียน|ตรอก|อาคาร|ตึก|สำนักงาน|ที่จอดรถ|จุดพิกัด) /.test(trimmed) ||
+            ["highway", "junction", "turning_circle", "parking"].includes((categoryLabel || "").toLowerCase()) ||
+            (tags && (tags.highway || tags.junction));
+
+        return isGenericPattern;
+    }
+
+    function isMarketOrRestaurant(name, tags, categoryLabel) {
+        const trimmed = (name || "").trim();
+        return (
+            /ตลาด|ร้านอาหาร|ร้าน|ภัตตาคาร|คาเฟ่|ก๋วยเตี๋ยว|ข้าวมันไก่|ข้าวขาหมู|ผัดไทย|ส้มตำ|บะหมี่|อาหาร|อร่อย|เด็ด/.test(trimmed) ||
+            ["restaurant", "cafe", "food_court", "marketplace"].includes((categoryLabel || "").toLowerCase()) ||
+            Boolean(tags && (tags.amenity === "restaurant" || tags.amenity === "cafe" || tags.amenity === "marketplace"))
+        );
+    }
+
+    async function buildConciseTouristAiSummary(spotInfo) {
+        const name = (spotInfo.name || "").trim();
+        const tags = spotInfo.tags || {};
+        const categoryLabel = spotInfo.categoryLabel || "";
+
+        if (isGenericNonTouristName(name, tags, categoryLabel)) {
+            return "-";
+        }
+
+        if (/จุฑาธุช/.test(name)) {
+            return [
+                `ชื่อสถานที่: ${name}`,
+                `สร้างขึ้นเมื่อใด: พ.ศ. 2466 (รัชสมัยพระบาทสมเด็จพระมงกุฎเกล้าเจ้าอยู่หัว รัชกาลที่ 6)`,
+                `อายุเท่าไหร่: ประมาณ 103 ปี`,
+                `โดยใคร: อนุสรณ์รำลึกถึงสมเด็จพระเจ้าบรมวงศ์เธอ เจ้าฟ้าจุฑาธุชธราดิลก กรมขุนเพ็ชรบูรณ์อินทราไชย พระราชโอรสในพระบาทสมเด็จพระจุลจอมเกล้าเจ้าอยู่หัว และสมเด็จพระศรีพัชรินทราบรมราชินีนาถ`,
+                `สำคัญอย่างไร: ทรงมีพระดำริก่อตั้งโรงเรียนเพาะช่าง (วิทยาลัยเพาะช่าง มทร.รัตนโกสินทร์) และทรงเป็นพระอาจารย์ในจุฬาลงกรณ์มหาวิทยาลัยและองคมนตรี`,
+                `จุดเด่นของสถานที่นี้คืออะไร: เป็นอนุสรณ์สถานสำคัญที่สะท้อนพระเกียรติคุณและบทบาทด้านศิลปะและการศึกษาไทย`
+            ].join("\n");
+        }
+
+        if (isMarketOrRestaurant(name, tags, categoryLabel)) {
+            const michelinTag = tags["michelin"] || tags["guide:michelin"] || "";
+            const michelinText = michelinTag
+                ? `มิชลิน: ${michelinTag}`
+                : "มิชลิน: ไม่อยู่ในทำเนียบดาวมิชลินที่ระบุในข้อมูล (ตรวจสอบรายการล่าสุดได้จากคู่มือมิชลินไกด์)";
+
+            const cuisineTag = tags["cuisine:th"] || tags.cuisine || tags["description:th"] || tags.description || "";
+            const recommendedFood = cuisineTag
+                ? `${cuisineTag} และเมนูขึ้นชื่อประจำร้าน/ตลาด`
+                : `อาหารจานเด่นและเมนูขึ้นชื่อประจำ${name}`;
+
+            return [
+                `ชื่อสถานที่: ${name}`,
+                `มิชลินกี่ดาว: ${michelinText}`,
+                `อาหารแนะนำคืออะไร: ${recommendedFood}`
+            ].join("\n");
+        }
+
+        const wikiExtract = await fetchThaiWikiSummary(name);
+        const rawSourceText = [
+            tags["description:th"],
+            tags.description,
+            tags.start_date ? `สร้างปี ${tags.start_date}` : "",
+            wikiExtract
+        ].filter(Boolean).join(" ");
+
+        const { eraText, ageText } = extractEraAndAgeText(rawSourceText);
+        const founderText = extractFounderText(rawSourceText);
+        const areaText = spotInfo.areaLocationText ? `ในย่าน${spotInfo.areaLocationText}` : "ในพื้นที่ท้องถิ่น";
+
+        const builtEra = eraText || `ไม่ระบุปีสร้างแน่ชัดในฐานข้อมูล (${areaText})`;
+        const builtAge = ageText || "ไม่ระบุอายุปีแน่ชัดในฐานข้อมูล";
+        const builtFounder = founderText || `ไม่ระบุผู้สร้างแน่ชัดในฐานข้อมูล (${areaText})`;
+        const builtImportance = `เป็น${categoryLabel || "สถานที่สำคัญ"}ประจำ${areaText} ที่มีความสำคัญทางประวัติศาสตร์ วัฒนธรรม หรือวิถีชุมชน`;
+        const builtHighlight = wikiExtract
+            ? wikiExtract.split(/(?<=[.!?])\s+/).slice(0, 2).join(" ")
+            : (tags["description:th"] || tags.description || `โดดเด่นด้านสถาปัตยกรรม เรื่องราวท้องถิ่น และเอกลักษณ์เฉพาะตัวของ${name}`);
+
+        return [
+            `ชื่อสถานที่: ${name}`,
+            `สร้างขึ้นเมื่อใด: ${builtEra}`,
+            `อายุเท่าไหร่: ${builtAge}`,
+            `โดยใคร: ${builtFounder}`,
+            `สำคัญอย่างไร: ${builtImportance}`,
+            `จุดเด่นของสถานที่นี้คืออะไร: ${builtHighlight}`
+        ].join("\n");
+    }
+
+    async function fillFormFromOsmBox() {
+        let targetLat = latestOsmInfo && latestOsmInfo.lat ? parseFloat(latestOsmInfo.lat) : NaN;
+        let targetLng = latestOsmInfo && latestOsmInfo.lng ? parseFloat(latestOsmInfo.lng) : NaN;
+
+        if (isNaN(targetLat) || isNaN(targetLng)) {
+            const center = map ? map.getCenter() : getCurrentDeviceCoords();
+            targetLat = Number(center.lat.toFixed(5));
+            targetLng = Number(center.lng.toFixed(5));
+        }
+
+        const nameInputEl = document.getElementById("spotName");
+        const latInputEl = document.getElementById("spotLat");
+        const lngInputEl = document.getElementById("spotLng");
+        const storyInputEl = document.getElementById("spotStory");
+
+        if (latInputEl) latInputEl.value = targetLat.toFixed(5);
+        if (lngInputEl) lngInputEl.value = targetLng.toFixed(5);
+
+        const initialName = (latestOsmInfo && latestOsmInfo.placeName && !latestOsmInfo.placeName.startsWith("พิกัด "))
+            ? latestOsmInfo.placeName
+            : "กำลังค้นหาชื่อสถานที่...";
+
+        if (nameInputEl) nameInputEl.value = initialName;
+        if (storyInputEl) storyInputEl.value = "กำลังค้นหาข้อมูลสถานที่...";
+
+        const osmSpot = await findNearestTouristOsmSpotWithin30m(targetLat, targetLng);
+        if (nameInputEl) nameInputEl.value = osmSpot.name;
+
+        const storyText = await buildConciseTouristAiSummary(osmSpot);
+        if (storyInputEl) storyInputEl.value = storyText;
+    }
+
+    async function fastRecordCurrentSpot() {
+        const btn = document.getElementById("fastRecordBtn");
+        if (btn) {
+            btn.disabled = true;
+            btn.innerHTML = `<span>⏳</span><span>SAVING</span><span>...</span>`;
+        }
+
+        try {
+            const coords = await fetchCurrentGpsOnce(3500);
+            const latNum = Number(coords.lat.toFixed(5));
+            const lngNum = Number(coords.lng.toFixed(5));
+
+            const osmSpot = await findNearestTouristOsmSpotWithin30m(latNum, lngNum);
+            const storyText = await buildConciseTouristAiSummary(osmSpot);
+
+            document.getElementById("spotName").value = osmSpot.name;
+            document.getElementById("spotLat").value = latNum;
+            document.getElementById("spotLng").value = lngNum;
+            document.getElementById("spotStory").value = storyText;
+
+            const newSpot = {
+                id: Date.now(),
+                name: osmSpot.name,
+                lat: latNum,
+                lng: lngNum,
+                story: storyText,
+                stories: { 'th-TH': storyText },
+                played: false
+            };
+
+            masterSpots.push(newSpot);
+            saveSpotsToStorage();
+            updateMasterUI();
+            refreshListenerMapMarkers();
+            if (document.getElementById("master-all-spots-screen").style.display === "block") {
+                renderAllSpotsList();
+            }
+            if (map) {
+                map.setView([latNum, lngNum], map.getZoom(), { animate: true });
+                evaluateCenterMarkerAndOsm();
+            }
+
+            if (btn) {
+                btn.classList.add("recorded");
+                btn.innerHTML = `<span>✅</span><span>FAST</span><span>RECORDED</span>`;
+            }
+        } finally {
+            if (btn) btn.disabled = false;
+        }
+    }
+
+    function isSpotBeingEdited(id) {
+        return editingSpotId === id || unlockedEditIds.has(id);
+    }
+
+    function getSpotMarkerIcon(spotId) {
+        if (centeredSpotId === spotId) {
+            return greenSpotIcon;
+        }
+        if (isSpotBeingEdited(spotId)) {
+            return orangeSpotIcon;
+        }
+        return new L.Icon.Default();
+    }
+
+    function refreshAllSpotMarkerIcons() {
+        spotMarkerRefs.forEach((marker, spotId) => {
+            marker.setIcon(getSpotMarkerIcon(spotId));
+        });
+    }
+
+    function evaluateCenterMarkerAndOsm() {
+        if (!map) return;
+        const center = map.getCenter();
+        const centerPoint = map.latLngToContainerPoint(center);
+
+        let closestSpot = null;
+        let minPixelDist = 36;
+
+        masterSpots.forEach(spot => {
+            const p = map.latLngToContainerPoint([Number(spot.lat), Number(spot.lng)]);
+            const d = centerPoint.distanceTo(p);
+            if (d <= minPixelDist) {
+                minPixelDist = d;
+                closestSpot = spot;
+            }
+        });
+
+        const nextCenteredId = closestSpot ? closestSpot.id : null;
+        if (nextCenteredId !== centeredSpotId) {
+            centeredSpotId = nextCenteredId;
+            refreshAllSpotMarkerIcons();
+        }
+
+        const targetLat = closestSpot ? Number(closestSpot.lat) : center.lat;
+        const targetLng = closestSpot ? Number(closestSpot.lng) : center.lng;
+        const titleEl = document.getElementById("centerOsmTitle");
+        if (titleEl) {
+            titleEl.innerText = closestSpot
+                ? `🟢 Marker ตรงกลาง: ${closestSpot.name}`
+                : `🌐 OpenStreetMap (กึ่งกลางแผนที่ ${targetLat.toFixed(5)}, ${targetLng.toFixed(5)})`;
+        }
+
+        scheduleOsmReverseLookup(targetLat, targetLng, closestSpot);
+    }
+
+    function scheduleOsmReverseLookup(lat, lng, matchedSpot) {
+        const key = `${lat.toFixed(5)},${lng.toFixed(5)}`;
+        if (osmFetchTimer) {
+            clearTimeout(osmFetchTimer);
+        }
+
+        if (key === lastOsmKey && latestOsmInfo.displayName) {
+            renderOsmBox(latestOsmInfo, matchedSpot);
+            return;
+        }
+
+        const placeEl = document.getElementById("centerOsmPlaceName");
+        if (placeEl) {
+            placeEl.innerText = "กำลังดึงข้อมูลสถานที่จาก OpenStreetMap...";
+        }
+
+        osmFetchTimer = setTimeout(async () => {
+            try {
+                const url = `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${encodeURIComponent(lat)}&lon=${encodeURIComponent(lng)}&accept-language=th,en`;
+                const res = await fetch(url, {
+                    headers: { "Accept": "application/json" }
+                });
+                if (!res.ok) throw new Error("OSM network error");
+                const data = await res.json();
+
+                const addr = data.address || {};
+                const derivedName =
+                    data.name ||
+                    addr.amenity ||
+                    addr.tourism ||
+                    addr.building ||
+                    addr.shop ||
+                    addr.road ||
+                    (matchedSpot ? matchedSpot.name : "") ||
+                    `จุดพิกัด ${lat.toFixed(5)}, ${lng.toFixed(5)}`;
+
+                lastOsmKey = key;
+                latestOsmInfo = {
+                    placeName: derivedName,
+                    displayName: data.display_name || derivedName,
+                    lat: lat.toFixed(5),
+                    lng: lng.toFixed(5)
+                };
+                renderOsmBox(latestOsmInfo, matchedSpot);
+            } catch (err) {
+                const fallbackName = matchedSpot ? matchedSpot.name : `พิกัด ${lat.toFixed(5)}, ${lng.toFixed(5)}`;
+                latestOsmInfo = {
+                    placeName: fallbackName,
+                    displayName: `Lat: ${lat.toFixed(5)}, Lng: ${lng.toFixed(5)}`,
+                    lat: lat.toFixed(5),
+                    lng: lng.toFixed(5)
+                };
+                renderOsmBox(latestOsmInfo, matchedSpot);
+            }
+        }, 350);
+    }
+
+    function renderOsmBox(info, matchedSpot) {
+        const placeEl = document.getElementById("centerOsmPlaceName");
+        const addrEl = document.getElementById("centerOsmAddress");
+        if (placeEl) {
+            placeEl.innerText = matchedSpot
+                ? `ชื่อจุด: ${matchedSpot.name} | OSM: ${info.placeName}`
+                : `ชื่อสถานที่ (OSM): ${info.placeName}`;
+        }
+        if (addrEl) {
+            addrEl.innerText = info.displayName || "-";
+        }
+    }
+
+    function saveSpotFromMarkerDoubleClick(spot, markerLatLng) {
+        const latNum = Number(markerLatLng.lat.toFixed(5));
+        const lngNum = Number(markerLatLng.lng.toFixed(5));
+        const resolvedName =
+            (latestOsmInfo && latestOsmInfo.placeName && !latestOsmInfo.placeName.startsWith("พิกัด "))
+                ? (spot.name || latestOsmInfo.placeName)
+                : spot.name;
+        const storyText = spot.story || resolvedName;
+
+        masterSpots = masterSpots.map(s =>
+            s.id === spot.id
+                ? {
+                    ...s,
+                    name: resolvedName,
+                    lat: latNum,
+                    lng: lngNum,
+                    story: storyText,
+                    stories: { ...(s.stories || {}), 'th-TH': storyText },
+                    played: false
+                }
+                : s
+        );
+
+        document.getElementById("spotName").value = resolvedName;
+        document.getElementById("spotLat").value = latNum;
+        document.getElementById("spotLng").value = lngNum;
+        document.getElementById("spotStory").value = storyText;
+
+        if (unlockedEditIds.has(spot.id)) {
+            const rowName = document.getElementById(`edit-name-${spot.id}`);
+            const rowLat = document.getElementById(`edit-lat-${spot.id}`);
+            const rowLng = document.getElementById(`edit-lng-${spot.id}`);
+            if (rowName) rowName.value = resolvedName;
+            if (rowLat) rowLat.value = latNum;
+            if (rowLng) rowLng.value = lngNum;
+        }
+
+        saveSpotsToStorage();
+        updateMasterUI();
+        refreshListenerMapMarkers();
+        if (document.getElementById("master-all-spots-screen").style.display === "block") {
+            renderAllSpotsList();
+        }
+        evaluateCenterMarkerAndOsm();
+    }
+
+    function updateZoomBadge() {
+        const badge = document.getElementById("mapZoomLevelBadge");
+        if (!badge || !map) return;
+        const z = map.getZoom();
+        badge.innerText = `z${Number.isInteger(z) ? z : z.toFixed(1)}`;
+    }
+
+    function zoomMapBy(delta) {
+        if (!map) return;
+        const currentZ = map.getZoom();
+        const nextZ = Math.max(map.getMinZoom(), Math.min(map.getMaxZoom(), currentZ + delta));
+        map.setZoom(nextZ);
+        updateZoomBadge();
+    }
+
+    function resetZoomTo17() {
+        if (!map) return;
+        map.setZoom(17);
+        updateZoomBadge();
+    }
+
+    function syncFreePanButtonUI() {
+        const btn = document.getElementById("freePanToggleBtn");
+        if (!btn) return;
+        if (freePanMode) {
+            btn.classList.remove("locked");
+            btn.innerText = "🔓 อิสระ";
+            btn.title = "โหมดเลื่อนแผนที่อิสระ (ไม่อยู่ในโหมดแก้ไข จะเลื่อนดูจุดอื่นได้โดยไม่ดึงตำแหน่งปัจจุบันมากลางจอ)";
+        } else {
+            btn.classList.add("locked");
+            btn.innerText = "🔒 ล็อก";
+            btn.title = "โหมดติดตามตำแหน่งปัจจุบัน (กดเพื่อเลื่อนแผนที่อิสระ)";
+        }
+    }
+
+    function toggleFreePanMode() {
+        freePanMode = !freePanMode;
+        syncFreePanButtonUI();
+    }
+
+    function syncMasterGpsButtonUI() {
+        const btn = document.getElementById("masterGpsToggleBtn");
+        if (!btn) return;
+        if (masterGpsEnabled) {
+            btn.classList.remove("off");
+            btn.innerText = "GPS";
+            btn.title = "GPS เปิดอยู่ (กดเพื่อปิด)";
+        } else {
+            btn.classList.add("off");
+            btn.innerText = "OFF";
+            btn.title = "GPS ปิดอยู่ (กดเพื่อเปิด)";
+        }
+    }
+
+    function toggleMasterGps() {
+        masterGpsEnabled = !masterGpsEnabled;
+        syncMasterGpsButtonUI();
+        if (masterGpsEnabled) {
+            startMasterLiveTracking();
+        } else {
+            stopMasterLiveTracking();
+        }
+    }
+
+    function ensureUserMarker(lat, lng) {
+        const latFixed = Number(lat).toFixed(5);
+        const lngFixed = Number(lng).toFixed(5);
+        if (!map) return;
+
+        if (!userLocationMarker) {
+            userLocationMarker = L.marker([lat, lng], { icon: orangeSpotIcon })
+                .addTo(map)
+                .bindPopup(`ตำแหน่งปัจจุบัน (สีส้ม)<br>Lat: ${latFixed}, Lng: ${lngFixed}`);
+
+            userLocationMarker.on('dblclick', function (e) {
+                if (e && e.originalEvent) {
+                    L.DomEvent.stopPropagation(e.originalEvent);
+                }
+                const pos = e.target.getLatLng();
+                const latStr = pos.lat.toFixed(5);
+                const lngStr = pos.lng.toFixed(5);
+                document.getElementById("spotLat").value = latStr;
+                document.getElementById("spotLng").value = lngStr;
+            });
+        } else {
+            userLocationMarker.setIcon(orangeSpotIcon);
+            userLocationMarker.setLatLng([lat, lng]);
+            userLocationMarker.bindPopup(`ตำแหน่งปัจจุบัน (สีส้ม)<br>Lat: ${latFixed}, Lng: ${lngFixed}`);
+        }
+    }
+
+    function updateRealtimeCoordDisplay(lat, lng) {
+        const latFixed = Number(lat).toFixed(5);
+        const lngFixed = Number(lng).toFixed(5);
+        latestMasterCoords = { lat: latFixed, lng: lngFixed };
+
+        const chipText = document.getElementById("liveLatLngText");
+        if (chipText) {
+            chipText.innerText = `Lat: ${latFixed}, Lng: ${lngFixed}`;
+        }
+
+        ensureUserMarker(lat, lng);
+    }
+
+    function applyRealtimeCoordsToForm() {
+        if (!latestMasterCoords) {
+            return;
+        }
+
+        const latNum = parseFloat(latestMasterCoords.lat);
+        const lngNum = parseFloat(latestMasterCoords.lng);
+        if (isNaN(latNum) || isNaN(lngNum)) return;
+
+        document.getElementById("spotLat").value = latestMasterCoords.lat;
+        document.getElementById("spotLng").value = latestMasterCoords.lng;
+
+        const nameInput = document.getElementById("spotName").value.trim();
+        const storyInput = document.getElementById("spotStory").value.trim();
+        const spotNumber = masterSpots.length + 1;
+        const autoName = nameInput || `จุดที่ ${spotNumber} (${latestMasterCoords.lat}, ${latestMasterCoords.lng})`;
+        const autoStory = storyInput || "-";
+
+        if (editingSpotId !== null) {
+            masterSpots = masterSpots.map(spot =>
+                spot.id === editingSpotId
+                    ? { ...spot, name: autoName, lat: latNum, lng: lngNum, story: autoStory, stories: { 'th-TH': autoStory }, played: false }
+                    : spot
+            );
+            cancelEdit();
+        } else {
+            const newSpot = {
+                id: Date.now(),
+                name: autoName,
+                lat: latNum,
+                lng: lngNum,
+                story: autoStory,
+                stories: { 'th-TH': autoStory },
+                played: false
+            };
+            masterSpots.push(newSpot);
+            document.getElementById("spotName").value = "";
+            document.getElementById("spotLat").value = "";
+            document.getElementById("spotLng").value = "";
+            document.getElementById("spotStory").value = "";
+        }
+
+        saveSpotsToStorage();
+        updateMasterUI();
+        refreshListenerMapMarkers();
+        if (document.getElementById("master-all-spots-screen").style.display === "block") {
+            renderAllSpotsList();
+        }
+    }
+
+    function showMoveConfirmModal(spot, newLat, newLng, oldLat, oldLng, marker) {
+        pendingMoveData = {
+            spotId: spot.id,
+            spotName: spot.name,
+            newLat: Number(newLat.toFixed(5)),
+            newLng: Number(newLng.toFixed(5)),
+            oldLat,
+            oldLng,
+            marker
+        };
+
+        const modal = document.getElementById("moveConfirmModal");
+        const titleEl = document.getElementById("moveConfirmTitle");
+        const coordsEl = document.getElementById("moveConfirmCoords");
+        if (titleEl) {
+            titleEl.innerText = `ต้องการย้ายจุด "${spot.name}" นี้ใช่ไหม?`;
+        }
+        if (coordsEl) {
+            coordsEl.innerText = `Lat: ${pendingMoveData.newLat}, Lng: ${pendingMoveData.newLng}`;
+        }
+        if (modal) {
+            modal.style.display = "block";
+        }
+    }
+
+    function hideMoveConfirmModal() {
+        const modal = document.getElementById("moveConfirmModal");
+        if (modal) {
+            modal.style.display = "none";
+        }
+        pendingMoveData = null;
+    }
+
+    function confirmMoveSpot(isYes) {
+        if (!pendingMoveData) return;
+        const { spotId, newLat, newLng, oldLat, oldLng, marker } = pendingMoveData;
+
+        if (isYes) {
+            masterSpots = masterSpots.map(s =>
+                s.id === spotId
+                    ? { ...s, lat: newLat, lng: newLng, played: false }
+                    : s
+            );
+            saveSpotsToStorage();
+            updateMasterUI();
+            refreshListenerMapMarkers();
+            if (document.getElementById("master-all-spots-screen").style.display === "block") {
+                renderAllSpotsList();
+            }
+            if (editingSpotId === spotId) {
+                document.getElementById("spotLat").value = newLat;
+                document.getElementById("spotLng").value = newLng;
+            }
+        } else {
+            if (marker) {
+                marker.setLatLng([oldLat, oldLng]);
+            }
+            updateRealtimeCoordDisplay(oldLat, oldLng);
+            if (editingSpotId === spotId) {
+                document.getElementById("spotLat").value = oldLat;
+                document.getElementById("spotLng").value = oldLng;
+            }
+        }
+
+        hideMoveConfirmModal();
+        evaluateCenterMarkerAndOsm();
+    }
+
+    function initMap() {
+        if (!map) {
+            map = L.map('map', {
+                minZoom: 3,
+                maxZoom: 22,
+                zoomSnap: 0.5,
+                zoomDelta: 1,
+                wheelPxPerZoomLevel: 60
+            }).setView([13.7515, 100.4927], 17);
+
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                minZoom: 3,
+                maxNativeZoom: 19,
+                maxZoom: 22,
+                attribution: '© OpenStreetMap'
+            }).addTo(map);
+            markersLayer = L.layerGroup().addTo(map);
+
+            map.on('zoomend', () => {
+                updateZoomBadge();
+                evaluateCenterMarkerAndOsm();
+            });
+            map.on('moveend', evaluateCenterMarkerAndOsm);
+            updateZoomBadge();
+        } else {
+            map.invalidateSize();
+            updateZoomBadge();
+        }
+    }
+
+    function startMasterLiveTracking() {
+        if (!masterGpsEnabled) return;
+        stopMasterLiveTracking();
+
+        if ("geolocation" in navigator) {
+            navigator.geolocation.getCurrentPosition(function (position) {
+                if (!masterGpsEnabled || !map) return;
+                const lat = position.coords.latitude;
+                const lng = position.coords.longitude;
+                updateRealtimeCoordDisplay(lat, lng);
+                if (!freePanMode && editingSpotId === null && unlockedEditIds.size === 0) {
+                    map.setView([lat, lng], 18);
+                    updateZoomBadge();
+                    firstCenterDone = true;
+                }
+                evaluateCenterMarkerAndOsm();
+            }, function (err) {
+                console.warn("Initial GPS error: " + err.message);
+            }, { enableHighAccuracy: true, timeout: 5000 });
+
+            masterWatchId = navigator.geolocation.watchPosition(
+                function (position) {
+                    if (!masterGpsEnabled || !map) return;
+                    const lat = position.coords.latitude;
+                    const lng = position.coords.longitude;
+
+                    updateRealtimeCoordDisplay(lat, lng);
+
+                    if (!freePanMode && editingSpotId === null && unlockedEditIds.size === 0) {
+                        if (!firstCenterDone) {
+                            map.setView([lat, lng], 18);
+                            updateZoomBadge();
+                            firstCenterDone = true;
+                        } else {
+                            map.panTo([lat, lng]);
+                        }
+                    }
+                    evaluateCenterMarkerAndOsm();
+                },
+                function (error) {
+                    console.warn("Master GPS warning: " + error.message);
+                },
+                { enableHighAccuracy: true, maximumAge: 1000, timeout: 5000 }
+            );
+        }
+    }
+
+    function stopMasterLiveTracking() {
+        if (masterWatchId !== null) {
+            navigator.geolocation.clearWatch(masterWatchId);
+            masterWatchId = null;
+        }
+        firstCenterDone = false;
+    }
+
+    function centerMapOnUser() {
+        freePanMode = false;
+        syncFreePanButtonUI();
+        if (userLocationMarker && map) {
+            map.setView(userLocationMarker.getLatLng(), 18);
+            updateZoomBadge();
+        } else if (latestMasterCoords && map) {
+            map.setView([parseFloat(latestMasterCoords.lat), parseFloat(latestMasterCoords.lng)], 18);
+            updateZoomBadge();
+        }
+    }
+
+    function addSpot() {
+        const name = document.getElementById("spotName").value.trim();
+        const lat = parseFloat(document.getElementById("spotLat").value);
+        const lng = parseFloat(document.getElementById("spotLng").value);
+        const story = document.getElementById("spotStory").value.trim();
+
+        if (!name || isNaN(lat) || isNaN(lng) || !story) {
+            alert("กรุณากรอกข้อมูลให้ครบถ้วน (ชื่อ, พิกัด Lat/Lng หรือดับเบิลคลิกกรอบ OpenStreetMap ด้านบน, และบทบรรยาย)");
+            return;
+        }
+
+        if (editingSpotId !== null) {
+            masterSpots = masterSpots.map(spot =>
+                spot.id === editingSpotId ? { ...spot, name, lat, lng, story, stories: { 'th-TH': story }, played: false } : spot
+            );
+            cancelEdit();
+        } else {
+            const newSpot = { id: Date.now(), name, lat, lng, story, stories: { 'th-TH': story }, played: false };
+            masterSpots.push(newSpot);
+            document.getElementById("spotName").value = "";
+            document.getElementById("spotLat").value = "";
+            document.getElementById("spotLng").value = "";
+            document.getElementById("spotStory").value = "";
+        }
+
+        saveSpotsToStorage();
+        updateMasterUI();
+        refreshListenerMapMarkers();
+        evaluateCenterMarkerAndOsm();
+    }
+
+    function editSpot(id) {
+        const target = masterSpots.find(spot => spot.id === id);
+        if (!target) return;
+
+        editingSpotId = id;
+        freePanMode = true;
+        syncFreePanButtonUI();
+
+        document.getElementById("spotName").value = target.name;
+        document.getElementById("spotLat").value = target.lat;
+        document.getElementById("spotLng").value = target.lng;
+        document.getElementById("spotStory").value = target.story;
+
+        document.getElementById("spotFormTitle").innerText = "✏️ Edit Tour Spot (Thai)";
+        const saveBtn = document.getElementById("saveSpotBtn");
+        saveBtn.innerText = "💾 อัปเดตจุดท่องเที่ยวนี้";
+        saveBtn.style.background = "#e67e22";
+        document.getElementById("cancelEditBtn").style.display = "inline-block";
+
+        updateMasterUI();
+        if (map) {
+            map.setView([Number(target.lat), Number(target.lng)], map.getZoom(), { animate: true });
+            updateZoomBadge();
+            evaluateCenterMarkerAndOsm();
+        }
+    }
+
+    function cancelEdit() {
+        editingSpotId = null;
+        freePanMode = true;
+        syncFreePanButtonUI();
+
+        document.getElementById("spotName").value = "";
+        document.getElementById("spotLat").value = "";
+        document.getElementById("spotLng").value = "";
+        document.getElementById("spotStory").value = "";
+
+        document.getElementById("spotFormTitle").innerText = "📌 Add Tour Spot (Thai)";
+        const saveBtn = document.getElementById("saveSpotBtn");
+        saveBtn.innerText = "➕ บันทึกจุดท่องเที่ยวนี้";
+        saveBtn.style.background = "#27ae60";
+        document.getElementById("cancelEditBtn").style.display = "none";
+        updateMasterUI();
+    }
+
+    function enableInlineEdit(id) {
+        unlockedEditIds.add(id);
+        freePanMode = true;
+        syncFreePanButtonUI();
+        renderAllSpotsList();
+        updateMasterUI();
+        const target = masterSpots.find(s => s.id === id);
+        if (target && map) {
+            map.setView([Number(target.lat), Number(target.lng)], map.getZoom(), { animate: true });
+            updateZoomBadge();
+            evaluateCenterMarkerAndOsm();
+        }
+    }
+
+    function saveInlineSpot(id) {
+        const nameEl = document.getElementById(`edit-name-${id}`);
+        const latEl = document.getElementById(`edit-lat-${id}`);
+        const lngEl = document.getElementById(`edit-lng-${id}`);
+        const storyEl = document.getElementById(`edit-story-${id}`);
+
+        if (!nameEl || !latEl || !lngEl || !storyEl) return;
+
+        const name = nameEl.value.trim();
+        const lat = parseFloat(latEl.value);
+        const lng = parseFloat(lngEl.value);
+        const story = storyEl.value.trim();
+
+        if (!name || isNaN(lat) || isNaN(lng) || !story) {
+            alert("กรุณากรอกชื่อสถานที่, พิกัด Lat/Lng และบทบรรยายให้ครบถ้วนครับ");
+            return;
+        }
+
+        masterSpots = masterSpots.map(spot =>
+            spot.id === id ? { ...spot, name, lat, lng, story, stories: { 'th-TH': story }, played: false } : spot
+        );
+        unlockedEditIds.delete(id);
+        if (editingSpotId === id) {
+            cancelEdit();
+        }
+        saveSpotsToStorage();
+        updateMasterUI();
+        renderAllSpotsList();
+        refreshListenerMapMarkers();
+        evaluateCenterMarkerAndOsm();
+    }
+
+    function escapeAttr(val) {
+        return String(val)
+            .replace(/&/g, "&amp;")
+            .replace(/"/g, "&quot;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;");
+    }
+
+    function escapeHtml(val) {
+        return String(val)
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;");
+    }
+
+    function renderAllSpotsList() {
+        const container = document.getElementById("allSpotsContainer");
+        const countEl = document.getElementById("allSpotsCount");
+        if (countEl) countEl.innerText = masterSpots.length;
+
+        if (!container) return;
+
+        if (masterSpots.length === 0) {
+            container.innerHTML = `<p style="color: #888; text-align: center; font-size: 12px; margin-top: 20px;">ยังไม่มีข้อมูลจุดท่องเที่ยวที่บันทึกไว้</p>`;
+            return;
+        }
+
+        let html = "";
+        masterSpots.forEach((spot, idx) => {
+            const isEditing = unlockedEditIds.has(spot.id);
+            const disabledAttr = isEditing ? "" : "disabled";
+            const editingClass = isEditing ? "spot-item-card editing" : "spot-item-card";
+
+            html += `
+                <div class="${editingClass}">
+                    <div style="font-size: 11px; font-weight: bold; color: #2c3e50; margin-bottom: 5px;">
+                        จุดที่ ${idx + 1} ${isEditing ? '<span style="color:#e67e22;">(กำลังแก้ไข)</span>' : ''}
+                    </div>
+                    <input id="edit-name-${spot.id}" class="spot-field-input" type="text" value="${escapeAttr(spot.name)}" placeholder="ชื่อสถานที่" ${disabledAttr}>
+                    <div style="display: flex; gap: 5px;">
+                        <input id="edit-lat-${spot.id}" class="spot-field-input" type="text" value="${escapeAttr(spot.lat)}" placeholder="Latitude" ${disabledAttr}>
+                        <input id="edit-lng-${spot.id}" class="spot-field-input" type="text" value="${escapeAttr(spot.lng)}" placeholder="Longitude" ${disabledAttr}>
+                    </div>
+                    <textarea id="edit-story-${spot.id}" class="spot-field-input" style="height: 150px; line-height: 1.4;" placeholder="บทบรรยาย" ${disabledAttr}>${escapeHtml(spot.story)}</textarea>
+                    <div class="spot-action-row">
+                        <button type="button" class="btn-edit-spot" onclick="enableInlineEdit(${spot.id})">✏️ แก้ไข</button>
+                        <button type="button" class="btn-save-spot" onclick="saveInlineSpot(${spot.id})">💾 บันทึก</button>
+                        <button type="button" class="btn-del-spot" onclick="deleteSpot(${spot.id})">ลบ</button>
+                    </div>
+                </div>
+            `;
+        });
+
+        container.innerHTML = html;
+    }
+
+    function deleteSpot(id) {
+        if (editingSpotId === id) {
+            cancelEdit();
+        }
+        if (pendingMoveData && pendingMoveData.spotId === id) {
+            hideMoveConfirmModal();
+        }
+        if (centeredSpotId === id) {
+            centeredSpotId = null;
+        }
+        unlockedEditIds.delete(id);
+        masterSpots = masterSpots.filter(spot => spot.id !== id);
+        saveSpotsToStorage();
+        updateMasterUI();
+        renderAllSpotsList();
+        refreshListenerMapMarkers();
+        evaluateCenterMarkerAndOsm();
+    }
+
+    function updateMasterUI() {
+        const listContainer = document.getElementById("spotList");
+        document.getElementById("spotCount").innerText = masterSpots.length;
+
+        if (masterSpots.length === 0) {
+            listContainer.innerHTML = `<p style="color: #888; text-align: center; margin: 5px 0;">ยังไม่มีข้อมูลจุดท่องเที่ยว</p>`;
+            if (markersLayer) markersLayer.clearLayers();
+            spotMarkerRefs.clear();
+            return;
+        }
+
+        let html = "";
+        if (markersLayer) markersLayer.clearLayers();
+        spotMarkerRefs.clear();
+
+        masterSpots.forEach((spot, index) => {
+            const beingEdited = isSpotBeingEdited(spot.id);
+            const isCentered = centeredSpotId === spot.id;
+            const rowStyle = isCentered
+                ? "border-bottom: 1px solid #a9dfbf; background: #eafaf1; padding: 3px 4px; border-radius: 4px; display:flex; justify-content:space-between; align-items:center; gap: 4px;"
+                : beingEdited
+                    ? "border-bottom: 1px solid #f5cba7; background: #fff5eb; padding: 3px 4px; border-radius: 4px; display:flex; justify-content:space-between; align-items:center; gap: 4px;"
+                    : "border-bottom: 1px solid #eee; padding: 3px 0; display:flex; justify-content:space-between; align-items:center; gap: 4px;";
+
+            html += `<div style="${rowStyle}">
+                        <div style="flex:1; min-width:0; line-height:1.25;"><b>${index + 1}. ${escapeHtml(spot.name)}</b> ${isCentered ? '<span style="color:#27ae60; font-weight:bold;">[ตรงกลาง]</span>' : beingEdited ? '<span style="color:#e67e22; font-weight:bold;">[กำลังแก้ไข]</span>' : ''}<br><span style="color:#666; font-size:9.5px;">(${escapeHtml(spot.lat)}, ${escapeHtml(spot.lng)})</span></div>
+                        <div style="display:flex; gap:3px;">
+                            <button onclick="editSpot(${spot.id})" style="background:#f39c12; color:white; border:none; padding:2px 6px; border-radius:3px; cursor:pointer; font-size:10px;">แก้ไข</button>
+                            <button onclick="deleteSpot(${spot.id})" style="background:#e74c3c; color:white; border:none; padding:2px 6px; border-radius:3px; cursor:pointer; font-size:10px;">ลบ</button>
+                        </div>
+                     </div>`;
+
+            if (markersLayer) {
+                const origLat = Number(spot.lat);
+                const origLng = Number(spot.lng);
+                const markerOptions = {
+                    draggable: true,
+                    icon: getSpotMarkerIcon(spot.id)
+                };
+
+                const spotMarker = L.marker([origLat, origLng], markerOptions).addTo(markersLayer)
+                    .bindPopup(`<b>${escapeHtml(spot.name)}</b><br>Double-click เพื่อบันทึกลงตารางทันที หรือลากเพื่อย้ายจุด`);
+
+                spotMarkerRefs.set(spot.id, spotMarker);
+
+                spotMarker.on('dblclick', function (e) {
+                    if (e && e.originalEvent) {
+                        L.DomEvent.stopPropagation(e.originalEvent);
+                    }
+                    saveSpotFromMarkerDoubleClick(spot, e.target.getLatLng());
+                });
+
+                spotMarker.on('drag', function (e) {
+                    const pos = e.target.getLatLng();
+                    const latStr = pos.lat.toFixed(5);
+                    const lngStr = pos.lng.toFixed(5);
+                    if (editingSpotId === spot.id) {
+                        document.getElementById("spotLat").value = latStr;
+                        document.getElementById("spotLng").value = lngStr;
+                    }
+                    evaluateCenterMarkerAndOsm();
+                });
+
+                spotMarker.on('dragend', function (e) {
+                    const pos = e.target.getLatLng();
+                    const latStr = pos.lat.toFixed(5);
+                    const lngStr = pos.lng.toFixed(5);
+                    if (editingSpotId === spot.id) {
+                        document.getElementById("spotLat").value = latStr;
+                        document.getElementById("spotLng").value = lngStr;
+                    }
+                    showMoveConfirmModal(spot, pos.lat, pos.lng, origLat, origLng, spotMarker);
+                    evaluateCenterMarkerAndOsm();
+                });
+            }
+        });
+
+        listContainer.innerHTML = html;
+    }
+
+    function exportToJsonFile() {
+        if (masterSpots.length === 0) {
+            alert("ไม่มีข้อมูลจุดท่องเที่ยวให้บันทึกครับ");
+            return;
+        }
+
+        const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(masterSpots, null, 4));
+        const downloadAnchor = document.createElement('a');
+        downloadAnchor.setAttribute("href", dataStr);
+        downloadAnchor.setAttribute("download", "tour_spots_data.txt");
+        document.body.appendChild(downloadAnchor);
+        downloadAnchor.click();
+        downloadAnchor.remove();
+    }
+
+    function triggerImportSpotsFile() {
+        const inputEl = document.getElementById("importSpotsFileInput");
+        if (!inputEl) return;
+        inputEl.value = "";
+        inputEl.click();
+    }
+
+    function handleImportSpotsFile(event) {
+        const file = event && event.target && event.target.files ? event.target.files[0] : null;
+        if (!file) return;
+
+        const reader = new FileReader();
+        reader.onload = function (e) {
+            try {
+                const rawText = e.target.result;
+                const parsed = JSON.parse(rawText);
+                if (!Array.isArray(parsed)) {
+                    alert("รูปแบบไฟล์ไม่ถูกต้อง กรุณาเลือกไฟล์ tour_spots_data.txt ที่ส่งออกจากระบบครับ");
+                    return;
+                }
+
+                const existingIds = new Set(masterSpots.map(s => s.id));
+                let importedCount = 0;
+
+                parsed.forEach((item, idx) => {
+                    if (!item || typeof item !== "object") return;
+                    const lat = parseFloat(item.lat);
+                    const lng = parseFloat(item.lng);
+                    const name = typeof item.name === "string" && item.name.trim()
+                        ? item.name.trim()
+                        : `จุดที่นำเข้า ${idx + 1}`;
+                    const story = typeof item.story === "string" && item.story.trim()
+                        ? item.story.trim()
+                        : (item.stories && item.stories['th-TH']) || `พิกัด ${lat}, ${lng}`;
+
+                    if (isNaN(lat) || isNaN(lng)) return;
+
+                    let spotId = item.id;
+                    if (spotId === undefined || spotId === null || existingIds.has(spotId)) {
+                        spotId = Date.now() + idx + Math.floor(Math.random() * 1000);
+                    }
+                    existingIds.add(spotId);
+
+                    masterSpots.push({
+                        id: spotId,
+                        name,
+                        lat,
+                        lng,
+                        story,
+                        stories: item.stories && typeof item.stories === "object"
+                            ? { ...item.stories, 'th-TH': story }
+                            : { 'th-TH': story },
+                        played: false
+                    });
+                    importedCount++;
+                });
+
+                if (importedCount === 0) {
+                    alert("ไม่พบข้อมูลจุดท่องเที่ยวที่ถูกต้องในไฟล์ครับ");
+                    return;
+                }
+
+                saveSpotsToStorage();
+                updateMasterUI();
+                refreshListenerMapMarkers();
+                if (document.getElementById("master-all-spots-screen").style.display === "block") {
+                    renderAllSpotsList();
+                }
+                if (importedCount > 0 && map) {
+                    const lastImported = masterSpots[masterSpots.length - 1];
+                    map.setView([lastImported.lat, lastImported.lng], 18);
+                    updateZoomBadge();
+                    evaluateCenterMarkerAndOsm();
+                }
+            } catch (err) {
+                alert("ไม่สามารถอ่านไฟล์ได้ กรุณาตรวจสอบว่าไฟล์เป็นข้อมูล JSON/TXT ที่ถูกต้องครับ");
+            }
+        };
+        reader.readAsText(file, "utf-8");
+    }
+</script>
+
+</body>
+</html>
